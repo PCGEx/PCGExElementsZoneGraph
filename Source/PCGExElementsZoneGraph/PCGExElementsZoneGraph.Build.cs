@@ -31,6 +31,7 @@ public class PCGExElementsZoneGraph : ModuleRules
 				"Engine",
 				"PCG",
 				"PCGExCore",
+				"PCGExFilters",
 				"PCGExFoundations",
 				"PCGExGraphs",
 				"ZoneGraph",

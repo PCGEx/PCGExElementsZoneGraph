@@ -51,6 +51,14 @@ namespace PCGExMT
 	class FTimeSlicedMainThreadLoop;
 }
 
+namespace PCGExZoneGraph
+{
+	namespace Labels
+	{
+		const FName SourceEdgeFlipFiltersLabel = FName("Flip Conditions");
+	}
+}
+
 UCLASS(MinimalAPI, BlueprintType, ClassGroup = (Procedural), Category="PCGEx|Clusters", meta=(PCGExNodeLibraryDoc="cluster-to-zone-graph"))
 class UPCGExClusterToZoneGraphSettings : public UPCGExClustersProcessorSettings
 {
@@ -78,6 +86,7 @@ public:
 
 protected:
 	virtual bool OutputPinsCanBeDeactivated() const override { return true; }
+	virtual TArray<FPCGPinProperties> InputPinProperties() const override;
 	virtual TArray<FPCGPinProperties> OutputPinProperties() const override;
 	virtual FPCGElementPtr CreateElement() const override;
 	virtual bool ShouldCache() const override { return false; }
@@ -110,6 +119,10 @@ public:
 	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Settings|Direction", meta=(EditCondition="OrientationMode == EPCGExZGOrientationMode::GlobalDirection"))
 	FVector OrientationDirection = FVector::ForwardVector;
 
+	/** Enable the use of filters to define whether a road direction should be flipped or not (reversing the auto-computed direction). */
+	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Settings|Direction")
+	bool bEnableFlipFilters = false;
+	
 	/** Comma separated tags */
 	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = Settings, meta=(PCG_Overridable))
 	FString CommaSeparatedComponentTags = TEXT("PCGExZoneGraph");
@@ -244,6 +257,8 @@ private:
 struct FPCGExClusterToZoneGraphContext final : FPCGExClustersProcessorContext
 {
 	friend class FPCGExClusterToZoneGraphElement;
+	
+	TArray<TObjectPtr<const UPCGExPointFilterFactoryData>> FlipEdgeFilterFactories;
 
 	TArray<FString> ComponentTags;
 
@@ -308,9 +323,11 @@ namespace PCGExClusterToZoneGraph
 		FZoneLaneProfileRef CachedLaneProfile;
 		double CachedMaxLaneWidth = 0;
 		double CachedTotalProfileWidth = 0;
+		bool bReverseLaneProfileOverride = false;
 
 		explicit FZGRoad(FProcessor* InProcessor, const TSharedPtr<PCGExClusters::FNodeChain>& InChain, const bool InReverse);
 		void ResolveLaneProfile(const TSharedPtr<PCGExClusters::FCluster>& Cluster);
+		void ResolveReverseLaneProfile(const TSharedPtr<PCGExClusters::FCluster>& Cluster);
 		void Precompute(const TSharedPtr<PCGExClusters::FCluster>& Cluster);
 		void Compile();
 		void BuildPathOutput(const TSharedPtr<PCGExData::FPointIO>& InPathIO) const;
@@ -382,6 +399,7 @@ namespace PCGExClusterToZoneGraph
 		virtual bool Process(const TSharedPtr<PCGExMT::FTaskManager>& InTaskManager) override;
 		bool BuildChains();
 		virtual void CompleteWork() override;
+		virtual void ProcessEdges(const PCGExMT::FScope& Scope) override;
 		virtual void ProcessRange(const PCGExMT::FScope& Scope) override;
 		virtual void OnRangeProcessingComplete() override;
 

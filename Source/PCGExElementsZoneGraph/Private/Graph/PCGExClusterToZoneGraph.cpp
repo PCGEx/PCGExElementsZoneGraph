@@ -6,6 +6,7 @@
 #include "PCGComponent.h"
 #include "PCGExSubSystem.h"
 #include "ZoneShapeComponent.h"
+#include "Core/PCGExPointFilter.h"
 #include "Clusters/PCGExCluster.h"
 #include "Clusters/Artifacts/PCGExChain.h"
 #include "Clusters/Artifacts/PCGExCachedChain.h"
@@ -19,6 +20,7 @@
 #include "Helpers/PCGExArrayHelpers.h"
 #include "Helpers/PCGExPointArrayDataHelpers.h"
 #include "Paths/PCGExPathsHelpers.h"
+#include "PCGExCoreMacros.h"
 
 #define LOCTEXT_NAMESPACE "PCGExClusterToZoneGraph"
 #define PCGEX_NAMESPACE ClusterToZoneGraph
@@ -39,6 +41,16 @@ void UPCGExClusterToZoneGraphSettings::PostEditChangeProperty(struct FPropertyCh
 	Super::PostEditChangeProperty(PropertyChangedEvent);
 }
 #endif
+
+TArray<FPCGPinProperties> UPCGExClusterToZoneGraphSettings::InputPinProperties() const
+{
+	TArray<FPCGPinProperties> PinProperties = Super::InputPinProperties();
+	
+	if (bEnableFlipFilters) { PCGEX_PIN_FILTERS(PCGExZoneGraph::Labels::SourceEdgeFlipFiltersLabel, "Road direction flip filters.", Normal) }
+	else { PCGEX_PIN_FILTERS(PCGExZoneGraph::Labels::SourceEdgeFlipFiltersLabel, "Road direction flip filters.", Advanced) }
+	
+	return PinProperties;
+}
 
 TArray<FPCGPinProperties> UPCGExClusterToZoneGraphSettings::OutputPinProperties() const
 {
@@ -63,6 +75,11 @@ bool FPCGExClusterToZoneGraphElement::Boot(FPCGExContext* InContext) const
 
 	if (!FPCGExClustersProcessorElement::Boot(InContext)) { return false; }
 
+	if (Settings->bEnableFlipFilters)
+	{
+		GetInputFactories(Context, PCGExZoneGraph::Labels::SourceEdgeFlipFiltersLabel, Context->FlipEdgeFilterFactories, PCGExFactories::ClusterEdgeFilters, false);
+	}
+	
 	if (const UPCGComponent* PCGComponent = InContext->GetComponent())
 	{
 		/*
@@ -209,6 +226,23 @@ namespace PCGExClusterToZoneGraph
 				}
 			}
 		}
+	}
+
+	void FZGRoad::ResolveReverseLaneProfile(const TSharedPtr<PCGExClusters::FCluster>& Cluster)
+	{
+		if (Processor->EdgeFilterCache.IsEmpty()) { return; }
+
+		// Majority vote across chain edges
+		int32 TrueCount = 0;
+		int32 TotalCount = 0;
+		for (const PCGExClusters::FLink& Link : Chain->Links)
+		{
+			if (Link.Edge < 0) { continue; }
+			if (Processor->EdgeFilterCache[Link.Edge]) { TrueCount++; }
+			TotalCount++;
+		}
+
+		bReverseLaneProfileOverride = TotalCount > 0 && TrueCount > TotalCount / 2;
 	}
 
 	void FZGRoad::Precompute(const TSharedPtr<PCGExClusters::FCluster>& Cluster)
@@ -472,7 +506,7 @@ namespace PCGExClusterToZoneGraph
 					Next = PrecomputedPoints[k + 1].Position;
 				}
 
-				// Smooth tangent direction — override rotation
+				// Smooth tangent direction -- override rotation
 				const FVector TangentDir = (Next - Prev).GetSafeNormal();
 				if (!TangentDir.IsNearlyZero())
 				{
@@ -637,6 +671,7 @@ namespace PCGExClusterToZoneGraph
 			FZoneShapePoint ShapePoint = FZoneShapePoint(CenterPosition + RoadDirection * CachedRoadRadii[Ri]);
 			ShapePoint.SetRotationFromForwardAndUp(RoadDirection * -1, FVector::UpVector);
 			ShapePoint.Type = CachedPointType;
+			ShapePoint.bReverseLaneProfile = FromStart[Ri] != Road->bReverseLaneProfileOverride;
 
 			PrecomputedPoints[i] = ShapePoint;
 			CachedPointLaneProfiles[i] = Road->CachedLaneProfile;
@@ -701,6 +736,9 @@ namespace PCGExClusterToZoneGraph
 	{
 		TRACE_CPUPROFILER_EVENT_SCOPE(PCGExClusterToZoneGraph::Process);
 
+		DefaultEdgeFilterValue = false;
+		EdgeFilterFactories = &Context->FlipEdgeFilterFactories; // So filters can be initialized
+		
 		if (!IProcessor::Process(InTaskManager)) { return false; }
 
 		if (!DirectionSettings.InitFromParent(ExecutionContext, GetParentBatch<FBatch>()->DirectionSettings, EdgeDataFacade)) { return false; }
@@ -758,6 +796,11 @@ namespace PCGExClusterToZoneGraph
 
 		Polygons.Reserve(NumNodes / 2);
 
+		if (Settings->bEnableFlipFilters && !EdgeFilterFactories->IsEmpty())
+		{
+			StartParallelLoopForEdges();
+		}
+		
 		return bIsProcessorValid;
 	}
 
@@ -852,6 +895,8 @@ namespace PCGExClusterToZoneGraph
 		// Precompute all geometry off main thread
 		// Phase 1: Resolve lane profiles + cache widths (needed by auto-radius)
 		for (const TSharedPtr<FZGRoad>& Road : Roads) { Road->ResolveLaneProfile(Cluster); }
+		// Phase 1b: Resolve per-road reverse lane profile override (majority vote)
+		for (const TSharedPtr<FZGRoad>& Road : Roads) { Road->ResolveReverseLaneProfile(Cluster); }
 		// Phase 2: Polygon precompute (uses road widths for auto-radius)
 		for (const TSharedPtr<FZGPolygon>& Polygon : Polygons) { Polygon->Precompute(Cluster); }
 		// Phase 3: Push final polygon radii back to road endpoints
@@ -930,6 +975,12 @@ namespace PCGExClusterToZoneGraph
 		};
 
 		PCGEX_ASYNC_HANDLE_CHKD_VOID(TaskManager, MainCompileLoop)
+	}
+
+	void FProcessor::ProcessEdges(const PCGExMT::FScope& Scope)
+	{
+		//EdgeDataFacade->Fetch(Scope);
+		FilterEdgeScope(Scope);
 	}
 
 	void FProcessor::ProcessRange(const PCGExMT::FScope& Scope)
