@@ -154,6 +154,10 @@ bool FPCGExClusterToZoneGraphElement::AdvanceWork(FPCGExContext* InContext, cons
 
 namespace PCGExClusterToZoneGraph
 {
+// Shared base for FZGRoad and FZGPolygon.
+// Owns the UZoneShapeComponent and handles main-thread component creation.
+#pragma region FZGBase
+
 	FZGBase::FZGBase(FProcessor* InProcessor)
 		: Processor(InProcessor)
 	{
@@ -175,6 +179,24 @@ namespace PCGExClusterToZoneGraph
 		Component->ComponentTags.Reserve(Component->ComponentTags.Num() + Processor->GetContext()->ComponentTags.Num());
 		for (const FString& ComponentTag : Processor->GetContext()->ComponentTags) { Component->ComponentTags.Add(FName(ComponentTag)); }
 	}
+
+#pragma endregion
+
+// Represents a single road spline, built from a chain of cluster edges between two polygon nodes (or a polygon and a leaf).
+//
+// Resolution pipeline (called in order by FProcessor::CompleteWork):
+//   1. ResolveLaneProfile        - Majority-vote lane profile FName across all chain edges
+//   2. ResolveReverseLaneProfile - Majority-vote edge flip filter results (bool) across all chain edges
+//   3. ResolvePolygonPointProperties - Read InnerTurnRadius, Roll, ConnectionRestrictions from first/last edge
+//   4. Precompute                - Build shape points, trim endpoints at polygon boundaries, compute tangents
+//   5. Compile                   - Push shape points to UZoneShapeComponent (main thread)
+//
+// Cached values (CachedInnerTurnRadiusStart/End, CachedRollStart/End, CachedConnectionRestrictionsStart/End)
+// are consumed by FZGPolygon::Precompute when building polygon connection points.
+// "Start" refers to the road's logical start endpoint, "End" to the logical end.
+// When bIsReversed is true, the cached Start/End values are swapped after resolution
+// so they always match the logical direction regardless of the chain's geometric ordering.
+#pragma region FZGRoad
 
 	FZGRoad::FZGRoad(FProcessor* InProcessor, const TSharedPtr<PCGExClusters::FNodeChain>& InChain, const bool InReverse)
 		: FZGBase(InProcessor), Chain(InChain), bIsReversed(InReverse)
@@ -250,7 +272,6 @@ namespace PCGExClusterToZoneGraph
 		const auto* S = Processor->GetSettings();
 		const FPCGExZGPolygonSettings& PS = S->PolygonSettings;
 
-		// Get first and last edge PointIndex for shorthand reads
 		const PCGExClusters::FEdge* FirstEdge = Chain->Links.IsEmpty() ? nullptr : Cluster->GetEdge(Chain->Links[0]);
 		const PCGExClusters::FEdge* LastEdge = Chain->Links.IsEmpty() ? nullptr : Cluster->GetEdge(Chain->Links.Last());
 		if (!FirstEdge) { return; }
@@ -296,7 +317,6 @@ namespace PCGExClusterToZoneGraph
 			}
 		}
 
-		// If road is reversed, swap Start/End cached values
 		if (bIsReversed)
 		{
 			Swap(CachedInnerTurnRadiusStart, CachedInnerTurnRadiusEnd);
@@ -629,6 +649,25 @@ namespace PCGExClusterToZoneGraph
 		PathFacade->WriteFastest(Processor->TaskManager);
 	}
 
+#pragma endregion
+
+// Represents a polygon intersection shape, built from a non-leaf cluster node where multiple roads meet.
+//
+// Each road connecting to this polygon registers itself via Add(Road, bFromStart).
+// FromStart[i] tracks whether road i connects at its logical start or end.
+// This determines which of the road's cached Start/End values are used for that connection point.
+//
+// Precompute:
+//   1. Reads per-vertex polygon properties (radius, routing type, point type, tags) from vertex buffers or defaults
+//   2. Computes per-road radii based on auto-radius mode and lane profile widths
+//   3. Sorts connections by angle around the polygon center to establish winding order
+//   4. Builds FZoneShapePoint per connection with position, rotation (facing inward), lane profile,
+//      bReverseLaneProfile, InnerTurnRadius, Roll, and ConnectionRestrictions from the connected road
+//   5. Stores polygon boundary data (center, direction, radius) back on each road for endpoint trimming
+//
+// Compile (main thread): sets shape type, routing, tags, per-point lane profiles, then pushes points to the component.
+#pragma region FZGPolygon
+
 	FZGPolygon::FZGPolygon(FProcessor* InProcessor, const PCGExClusters::FNode* InNode)
 		: FZGBase(InProcessor), NodeIndex(InNode->Index)
 	{
@@ -814,6 +853,31 @@ namespace PCGExClusterToZoneGraph
 		Component->GetMutablePoints() = MoveTemp(PrecomputedPoints);
 		Component->UpdateShape();
 	}
+
+#pragma endregion
+
+// Per-cluster processor. Orchestrates the full conversion pipeline:
+//
+// Process():
+//   - Initializes direction settings and buffer getters (vertex and edge sourced)
+//   - Runs vertex filters to identify breakpoints, then builds chains
+//   - Optionally runs edge filters for the lane profile flip feature
+//
+// CompleteWork() (off main thread):
+//   - Computes road orientation (DFS / global direction / sort direction)
+//   - Creates FZGRoad and FZGPolygon instances from chains and non-leaf nodes
+//   - Runs the resolution pipeline in phases:
+//       Phase 1:  Resolve lane profiles (majority vote across chain edges)
+//       Phase 1b: Resolve reverse lane profile override (edge filter majority vote)
+//       Phase 1c: Resolve polygon point properties (InnerTurnRadius, Roll, ConnectionRestrictions from edge endpoints)
+//       Phase 2:  Polygon precompute (reads vertex properties, builds connection points, sorts by angle)
+//       Phase 3:  Sync polygon radii back to road endpoints
+//       Phase 4:  Road precompute (build shape points, trim at polygon boundaries, compute tangents)
+//   - Queues a time-sliced main-thread loop for component creation and compilation
+//
+// The main-thread loop (MainCompileLoop) handles InitComponent, Compile, and optional path output
+// for both polygons and roads, since UZoneShapeComponent creation requires the game thread.
+#pragma region FProcessor
 
 	bool FProcessor::Process(const TSharedPtr<PCGExMT::FTaskManager>& InTaskManager)
 	{
@@ -1242,6 +1306,14 @@ namespace PCGExClusterToZoneGraph
 		ConnectionRestrictionsBuffer.Reset();
 	}
 
+#pragma endregion
+
+// Batch-level setup. Runs once per vertex/edge set before processors are created.
+// Handles direction settings initialization and vertex buffer preloading.
+// Edge buffers (lane profile, polygon point properties) are lazily initialized in FProcessor::Process()
+// since the edge facade preloader isn't available here.
+#pragma region FBatch
+
 	void FBatch::RegisterBuffersDependencies(PCGExData::FFacadePreloader& FacadePreloader)
 	{
 		TBatch<FProcessor>::RegisterBuffersDependencies(FacadePreloader);
@@ -1276,6 +1348,9 @@ namespace PCGExClusterToZoneGraph
 
 		TBatch<FProcessor>::OnProcessingPreparationComplete();
 	}
+
+#pragma endregion
+
 }
 
 #undef LOCTEXT_NAMESPACE
