@@ -26,6 +26,8 @@ public class PCGExElementsZoneGraphEditor : ModuleRules
 				"PCG",
 				"PCGExCore",
 				"PCGExCoreEditor",
+				"PCGExProperties",
+				"PCGExPropertiesEditor",
 				"PCGExElementsZoneGraph",
 			}
 		);

@@ -893,12 +893,37 @@ namespace PCGExClusterToZoneGraph
 		const FPCGExZGPolygonSettings& PS = Settings->PolygonSettings;
 		const FPCGExZGRoadSettings& RS = Settings->RoadSettings;
 
-		if (PS.bOverridePolygonRadius) { PolygonRadiusBuffer = VtxDataFacade->GetBroadcaster<double>(PS.PolygonRadiusAttribute); }
-		if (PS.bOverridePolygonRoutingType) { PolygonRoutingTypeBuffer = VtxDataFacade->GetBroadcaster<int32>(PS.PolygonRoutingTypeAttribute); }
-		if (PS.bOverridePolygonPointType) { PolygonPointTypeBuffer = VtxDataFacade->GetBroadcaster<int32>(PS.PolygonPointTypeAttribute); }
-		if (RS.bOverrideRoadPointType) { RoadPointTypeBuffer = VtxDataFacade->GetBroadcaster<int32>(RS.RoadPointTypeAttribute); }
-		if (PS.IntersectionTagsMode != EPCGExZGBitmaskMode::None) { AdditionalIntersectionTagsBuffer = VtxDataFacade->GetBroadcaster<int32>(PS.IntersectionTagsAttribute); }
-		if (Settings->RoadSettings.bOverrideLaneProfile) { EdgeLaneProfileBuffer = EdgeDataFacade->GetBroadcaster<FName>(Settings->RoadSettings.LaneProfileAttribute); }
+		if (PS.bOverridePolygonRadius)
+		{
+			PolygonRadiusBuffer = VtxDataFacade->GetBroadcaster<double>(PS.PolygonRadiusAttribute);
+			if (!PolygonRadiusBuffer) { PCGEX_LOG_INVALID_ATTR_C(ExecutionContext, PolygonRadius, PS.PolygonRadiusAttribute) }
+		}
+		if (PS.bOverridePolygonRoutingType)
+		{
+			PolygonRoutingTypeBuffer = VtxDataFacade->GetBroadcaster<int32>(PS.PolygonRoutingTypeAttribute);
+			if (!PolygonRoutingTypeBuffer) { PCGEX_LOG_INVALID_ATTR_C(ExecutionContext, PolygonRoutingType, PS.PolygonRoutingTypeAttribute) }
+		}
+		if (PS.bOverridePolygonPointType)
+		{
+			PolygonPointTypeBuffer = VtxDataFacade->GetBroadcaster<int32>(PS.PolygonPointTypeAttribute);
+			if (!PolygonPointTypeBuffer) { PCGEX_LOG_INVALID_ATTR_C(ExecutionContext, PolygonPointType, PS.PolygonPointTypeAttribute) }
+		}
+		if (RS.bOverrideRoadPointType)
+		{
+			RoadPointTypeBuffer = VtxDataFacade->GetBroadcaster<int32>(RS.RoadPointTypeAttribute);
+			if (!RoadPointTypeBuffer) { PCGEX_LOG_INVALID_ATTR_C(ExecutionContext, RoadPointType, RS.RoadPointTypeAttribute) }
+		}
+		if (PS.IntersectionTagsMode != EPCGExZGBitmaskMode::None)
+		{
+			AdditionalIntersectionTagsBuffer = VtxDataFacade->GetBroadcaster<int32>(PS.IntersectionTagsAttribute);
+			if (!AdditionalIntersectionTagsBuffer) { PCGEX_LOG_INVALID_ATTR_C(ExecutionContext, IntersectionTags, PS.IntersectionTagsAttribute) }
+		}
+
+		if (Settings->RoadSettings.bOverrideLaneProfile)
+		{
+			EdgeLaneProfileBuffer = EdgeDataFacade->GetBroadcaster<FName>(Settings->RoadSettings.LaneProfileAttribute);
+			if (!EdgeLaneProfileBuffer) { PCGEX_LOG_INVALID_ATTR_C(ExecutionContext, LaneProfile, Settings->RoadSettings.LaneProfileAttribute) }
+		}
 
 		if (RS.RoadTangentLengthMode == EPCGExZGTangentLengthMode::Manual)
 		{
@@ -929,6 +954,7 @@ namespace PCGExClusterToZoneGraph
 			if (PS.ConnectionRestrictionMode != EPCGExZGBitmaskMode::None)
 			{
 				ConnectionRestrictionsBuffer = EdgeDataFacade->GetBroadcaster<int32>(PS.ConnectionRestrictionsAttribute);
+				if (!ConnectionRestrictionsBuffer) { PCGEX_LOG_INVALID_ATTR_C(ExecutionContext, ConnectionRestrictions, PS.ConnectionRestrictionsAttribute) }
 			}
 		}
 
