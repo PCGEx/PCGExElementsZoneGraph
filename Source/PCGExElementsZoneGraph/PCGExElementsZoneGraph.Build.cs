@@ -34,6 +34,7 @@ public class PCGExElementsZoneGraph : ModuleRules
 				"PCGExFilters",
 				"PCGExFoundations",
 				"PCGExGraphs",
+				"PCGExProperties",
 				"ZoneGraph",
 			}
 		);
