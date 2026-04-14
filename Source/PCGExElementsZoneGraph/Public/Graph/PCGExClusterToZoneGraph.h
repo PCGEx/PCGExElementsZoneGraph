@@ -41,6 +41,164 @@ enum class EPCGExZGTangentLengthMode : uint8
 	CatmullRom = 3 UMETA(DisplayName="Catmull-Rom", Tooltip="|P_next - P_prev| * 0.5."),
 };
 
+UENUM(BlueprintType)
+enum class EPCGExZGBitmaskMode : uint8
+{
+	None     = 0 UMETA(DisplayName="None", Tooltip="No connection restrictions."),
+	Raw      = 1 UMETA(DisplayName="Raw Bitmask", Tooltip="Read int32 attribute from edges, interpret directly as EZoneShapeLaneConnectionRestrictions bitmask."),
+	ValueMap = 2 UMETA(DisplayName="Value Map", Tooltip="Read int32 attribute from edges, look up in TMap to get bitmask."),
+};
+
+USTRUCT(BlueprintType)
+struct PCGEXELEMENTSZONEGRAPH_API FPCGExZGConnectionRestrictionFlags
+{
+	GENERATED_BODY()
+
+	UPROPERTY(BlueprintReadWrite, EditAnywhere, meta=(Bitmask, BitmaskEnum="/Script/ZoneGraph.EZoneShapeLaneConnectionRestrictions"))
+	int32 Flags = 0;
+};
+
+USTRUCT(BlueprintType)
+struct PCGEXELEMENTSZONEGRAPH_API FPCGExZGPolygonSettings
+{
+	GENERATED_BODY()
+
+	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = Settings, meta=(CategorySeparator="Geometry"))
+	double PolygonRadius = 100;
+
+	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = Settings, meta=(PCG_NotOverridable, InlineEditConditionToggle))
+	bool bOverridePolygonRadius = false;
+
+	/** Per-point polygon radius override. Read from: Points. Attribute type: double. */
+	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = Settings, meta=(PCG_Overridable, DisplayName="Radius (Attr)", EditCondition="bOverridePolygonRadius"))
+	FName PolygonRadiusAttribute = FName("PolygonRadius");
+
+	/** Auto-compute polygon radius from connected road lane profiles. */
+	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = Settings)
+	EPCGExZGAutoRadiusMode AutoRadiusMode = EPCGExZGAutoRadiusMode::Disabled;
+
+	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = Settings, meta=(CategorySeparator="Routing"))
+	EZoneShapePolygonRoutingType PolygonRoutingType = EZoneShapePolygonRoutingType::Arcs;
+
+	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = Settings, meta=(PCG_NotOverridable, InlineEditConditionToggle))
+	bool bOverridePolygonRoutingType = false;
+
+	/** Per-point polygon routing override. Read from: Points. Attribute type: int32. Values: 0=Bezier, 1=Arcs. */
+	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = Settings, meta=(PCG_Overridable, DisplayName="Polygon Routing (Attr)", EditCondition="bOverridePolygonRoutingType"))
+	FName PolygonRoutingTypeAttribute = FName("PolygonRoutingType");
+
+	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = Settings, meta=(CategorySeparator="Point Type"))
+	FZoneShapePointType PolygonPointType = FZoneShapePointType::LaneProfile;
+
+	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = Settings, meta=(PCG_NotOverridable, InlineEditConditionToggle))
+	bool bOverridePolygonPointType = false;
+
+	/** Per-point polygon shape point type override. Read from: Points. Attribute type: int32. Values: 0=Sharp, 1=Bezier, 2=AutoBezier, 3=LaneProfile. */
+	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = Settings, meta=(PCG_Overridable, DisplayName="Polygon Point Type (Attr)", EditCondition="bOverridePolygonPointType"))
+	FName PolygonPointTypeAttribute = FName("PolygonPointType");
+
+	/** Default intersection tags applied to all polygons. */
+	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = Settings, meta=(CategorySeparator="Intersection Tags"))
+	FZoneGraphTagMask AdditionalIntersectionTags = FZoneGraphTagMask::None;
+
+	/** How additional intersection tags are sourced from attributes. */
+	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = Settings)
+	EPCGExZGBitmaskMode IntersectionTagsMode = EPCGExZGBitmaskMode::None;
+
+	/** Attribute name for intersection tag values. Read from: Points. Attribute type: int32. */
+	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = Settings, meta=(PCG_Overridable, EditConditionHides, EditCondition="IntersectionTagsMode != EPCGExZGBitmaskMode::None"))
+	FName IntersectionTagsAttribute = FName("IntersectionTags");
+
+	/** Maps integer attribute values to intersection tag masks. */
+	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = Settings, meta=(EditConditionHides, EditCondition="IntersectionTagsMode == EPCGExZGBitmaskMode::ValueMap"))
+	TMap<int32, FZoneGraphTagMask> IntersectionTagsValueMap;
+
+	/** Inner turn radius for polygon arc routing. Read from: Edges (nearest edge to polygon connection). */
+	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = Settings, meta=(PCG_Overridable, DisplayName="Primary", CategorySeparator="Inner Turn Radius"))
+	FPCGExInputShorthandNameFloat InnerTurnRadiusPrimary = FPCGExInputShorthandNameFloat(FName("InnerTurnRadius"), 100.0f, false);
+
+	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = Settings, meta=(PCG_NotOverridable, InlineEditConditionToggle))
+	bool bSeparateInnerTurnRadiusSecondary = false;
+
+	/** Separate inner turn radius for the end polygon connection. When disabled, Primary value is used for both. */
+	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = Settings, meta=(PCG_Overridable, DisplayName="Secondary", EditCondition="bSeparateInnerTurnRadiusSecondary"))
+	FPCGExInputShorthandNameFloat InnerTurnRadiusSecondary = FPCGExInputShorthandNameFloat(FName("InnerTurnRadius"), 100.0f, false);
+
+	/** Roll angle (degrees) applied to polygon connection points. Read from: Edges (nearest edge to polygon connection). */
+	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = Settings, meta=(PCG_Overridable, DisplayName="Primary", CategorySeparator="Roll"))
+	FPCGExInputShorthandNameFloat RollPrimary = FPCGExInputShorthandNameFloat(FName("Roll"), 0.0f, false);
+
+	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = Settings, meta=(PCG_NotOverridable, InlineEditConditionToggle))
+	bool bSeparateRollSecondary = false;
+
+	/** Separate roll for the end polygon connection. When disabled, Primary value is used for both. */
+	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = Settings, meta=(PCG_Overridable, DisplayName="Secondary", EditCondition="bSeparateRollSecondary"))
+	FPCGExInputShorthandNameFloat RollSecondary = FPCGExInputShorthandNameFloat(FName("Roll"), 0.0f, false);
+
+	/** How lane connection restrictions are sourced. */
+	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = Settings, meta=(CategorySeparator="Connection Restrictions"))
+	EPCGExZGBitmaskMode ConnectionRestrictionMode = EPCGExZGBitmaskMode::None;
+
+	/** Attribute name for connection restriction values. Read from: Edges. */
+	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Connection Restrictions", meta=(PCG_Overridable, EditConditionHides, EditCondition="ConnectionRestrictionMode != EPCGExZGBitmaskMode::None"))
+	FName ConnectionRestrictionsAttribute = FName("ConnectionRestrictions");
+
+	/** Maps integer attribute values to connection restriction flags. */
+	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Connection Restrictions", meta=(EditConditionHides, EditCondition="ConnectionRestrictionMode == EPCGExZGBitmaskMode::ValueMap"))
+	TMap<int32, FPCGExZGConnectionRestrictionFlags> ConnectionRestrictionsValueMap;
+};
+
+USTRUCT(BlueprintType)
+struct PCGEXELEMENTSZONEGRAPH_API FPCGExZGRoadSettings
+{
+	GENERATED_BODY()
+
+	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = Settings, meta=(CategorySeparator="Point Type"))
+	FZoneShapePointType RoadPointType = FZoneShapePointType::AutoBezier;
+
+	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = Settings, meta=(PCG_NotOverridable, InlineEditConditionToggle))
+	bool bOverrideRoadPointType = false;
+
+	/** Per-edge road shape point type override. Read from: Points. Attribute type: int32. Values: 0=Sharp, 1=Bezier, 2=AutoBezier, 3=LaneProfile. */
+	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = Settings, meta=(PCG_Overridable, DisplayName="Road Point Type (Attr)", EditCondition="bOverrideRoadPointType"))
+	FName RoadPointTypeAttribute = FName("RoadPointType");
+
+	/** How road tangent lengths are determined. Controls bezier curve tightness. */
+	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = Settings, meta=(DisplayName="Tangent Length Mode", EditCondition="bCachedSupportsCustomLength", EditConditionHides, HideEditConditionToggle))
+	EPCGExZGTangentLengthMode RoadTangentLengthMode = EPCGExZGTangentLengthMode::Default;
+
+	/** Tangent length value -- constant or per-point attribute. */
+	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = Settings, meta=(PCG_Overridable, DisplayName="Length",
+		EditCondition="bCachedSupportsCustomLength && RoadTangentLengthMode == EPCGExZGTangentLengthMode::Manual", EditConditionHides, HideEditConditionToggle))
+	FPCGExInputShorthandNameDoubleAbs TangentLength = FPCGExInputShorthandNameDoubleAbs(FName("TangentLength"), 100.0, false);
+
+	/** Scale multiplier applied to all tangent lengths (manual or computed). */
+	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = Settings, meta=(PCG_Overridable, DisplayName="Scale", ClampMin=0, UIMin=0,
+		EditCondition="bCachedSupportsCustomLength && RoadTangentLengthMode != EPCGExZGTangentLengthMode::Default", EditConditionHides, HideEditConditionToggle))
+	double TangentLengthScale = 1.0;
+
+	/** Trim road shape points inside the polygon boundary so roads start/end precisely at the polygon edge. */
+	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = Settings, meta=(PCG_NotOverridable, InlineEditConditionToggle, CategorySeparator="Endpoints"))
+	bool bTrimRoadEndpoints = true;
+
+	/** After trimming, remove road points closer than this distance to the polygon boundary. */
+	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = Settings, meta=(PCG_Overridable, EditCondition="bTrimRoadEndpoints", ClampMin="0"))
+	double EndpointTrimBuffer = 0;
+
+	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = Settings, meta=(CategorySeparator="Lane Profile"))
+	FZoneLaneProfileRef LaneProfile;
+
+	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = Settings, meta=(PCG_NotOverridable, InlineEditConditionToggle))
+	bool bOverrideLaneProfile = false;
+
+	/** Lane profile override. Read from: Edges (majority vote). Attribute type: FName. Must match a registered lane profile name in ZoneGraph settings. */
+	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = Settings, meta=(PCG_Overridable, DisplayName="Lane Profile (Attr)", EditCondition="bOverrideLaneProfile"))
+	FName LaneProfileAttribute = FName("LaneProfile");
+
+	UPROPERTY()
+	bool bCachedSupportsCustomLength = false;
+};
+
 namespace PCGExClusters
 {
 	class FNodeChain;
@@ -72,7 +230,7 @@ public:
 			const TArray<FZoneLaneProfile>& Profiles = ZoneGraphSettings->GetLaneProfiles();
 			if (!Profiles.IsEmpty())
 			{
-				LaneProfile = Profiles[0];
+				RoadSettings.LaneProfile = Profiles[0];
 			}
 		}
 	}
@@ -100,9 +258,6 @@ public:
 	PCGEX_NODE_POINT_FILTER(FName("Break Conditions"), "Filters used to know which points are 'break' points. Use those if you want to create more polygon shapes.", PCGExFactories::ClusterNodeFilters, false)
 	//~End UPCGExPointsProcessorSettings
 
-	UPROPERTY()
-	bool bCachedSupportsCustomLength = false;
-	
 	/** Defines the direction in which points will be ordered to form the final paths. */
 	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Settings|Direction", meta=(PCG_Overridable))
 	FPCGExEdgeDirectionSettings DirectionSettings;
@@ -127,106 +282,13 @@ public:
 	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = Settings, meta=(PCG_Overridable))
 	FString CommaSeparatedComponentTags = TEXT("PCGExZoneGraph");
 
+	/** Polygon intersection settings. */
 	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Settings|ZoneGraph")
-	double PolygonRadius = 100;
+	FPCGExZGPolygonSettings PolygonSettings;
 
-	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Settings|ZoneGraph", meta=(PCG_NotOverridable, InlineEditConditionToggle))
-	bool bOverridePolygonRadius = false;
-
-	/** Per-point polygon radius override. Read from: Points. Attribute type: double. */
-	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Settings|ZoneGraph", meta=(PCG_Overridable, DisplayName="Radius (Attr)", EditCondition="bOverridePolygonRadius"))
-	FName PolygonRadiusAttribute = FName("ZG.PolygonRadius");
-
-	/** Auto-compute polygon radius from connected road lane profiles.
-	 * Disabled: use user radius only.
-	 * WidestLane: radius = widest single lane across connected roads.
-	 * HalfProfile: radius = max(total profile width) / 2 across connected roads.
-	 * WidestLane (Min) / HalfProfile (Min): use the larger of user radius and computed value. */
+	/** Road spline settings. */
 	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Settings|ZoneGraph")
-	EPCGExZGAutoRadiusMode AutoRadiusMode = EPCGExZGAutoRadiusMode::Disabled;
-
-	/** Trim road shape points inside the polygon boundary so roads start/end precisely at the polygon edge.
-	 * When disabled, road endpoints are simply offset by the polygon radius along the road direction. */
-	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Settings|ZoneGraph", meta=(PCG_NotOverridable, InlineEditConditionToggle))
-	bool bTrimRoadEndpoints = true;
-
-	/** After trimming, remove road points closer than this distance to the polygon boundary.
-	 * Prevents auto-bezier artifacts from near-coincident points at the trim boundary. */
-	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Settings|ZoneGraph", meta=(PCG_Overridable, EditCondition="bTrimRoadEndpoints", ClampMin="0"))
-	double EndpointTrimBuffer = 0;
-
-
-	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Settings|ZoneGraph")
-	EZoneShapePolygonRoutingType PolygonRoutingType = EZoneShapePolygonRoutingType::Arcs;
-
-	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Settings|ZoneGraph", meta=(PCG_NotOverridable, InlineEditConditionToggle))
-	bool bOverridePolygonRoutingType = false;
-
-	/** Per-point polygon routing override. Read from: Points. Attribute type: int32.
-	 * Values: 0=Bezier, 1=Arcs. */
-	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Settings|ZoneGraph", meta=(PCG_Overridable, DisplayName="Polygon Routing (Attr)", EditCondition="bOverridePolygonRoutingType"))
-	FName PolygonRoutingTypeAttribute = FName("PolygonRoutingType");
-
-
-	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Settings|ZoneGraph")
-	FZoneShapePointType PolygonPointType = FZoneShapePointType::LaneProfile;
-
-	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Settings|ZoneGraph", meta=(PCG_NotOverridable, InlineEditConditionToggle))
-	bool bOverridePolygonPointType = false;
-
-	/** Per-point polygon shape point type override. Read from: Points. Attribute type: int32.
-	 * Values: 0=Sharp, 1=Bezier, 2=AutoBezier, 3=LaneProfile. */
-	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Settings|ZoneGraph", meta=(PCG_Overridable, DisplayName="Polygon Point Type (Attr)", EditCondition="bOverridePolygonPointType"))
-	FName PolygonPointTypeAttribute = FName("PolygonPointType");
-
-
-	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Settings|ZoneGraph")
-	FZoneShapePointType RoadPointType = FZoneShapePointType::AutoBezier;
-
-	/** How road tangent lengths are determined. Controls bezier curve tightness. */
-	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Settings|ZoneGraph", meta=(DisplayName=" ├─ Tangent Length Mode", EditCondition="bCachedSupportsCustomLength", EditConditionHides, HideEditConditionToggle))
-	EPCGExZGTangentLengthMode RoadTangentLengthMode = EPCGExZGTangentLengthMode::Default;
-
-	/** Tangent length value -- constant or per-point attribute. */
-	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Settings|ZoneGraph", meta=(PCG_Overridable, DisplayName=" ├─ Length",
-		EditCondition="bCachedSupportsCustomLength && RoadTangentLengthMode == EPCGExZGTangentLengthMode::Manual", EditConditionHides, HideEditConditionToggle))
-	FPCGExInputShorthandNameDoubleAbs TangentLength = FPCGExInputShorthandNameDoubleAbs(FName("TangentLength"), 100.0, false);
-
-	/** Scale multiplier applied to all tangent lengths (manual or computed). */
-	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Settings|ZoneGraph", meta=(PCG_Overridable, DisplayName=" └─ Scale", ClampMin=0, UIMin=0,
-		EditCondition="bCachedSupportsCustomLength && RoadTangentLengthMode != EPCGExZGTangentLengthMode::Default", EditConditionHides, HideEditConditionToggle))
-	double TangentLengthScale = 1.0;
-
-	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Settings|ZoneGraph", meta=(PCG_NotOverridable, InlineEditConditionToggle))
-	bool bOverrideRoadPointType = false;
-	
-	/** Per-edge road shape point type override. Read from: Points. Attribute type: int32.
-	 * Values: 0=Sharp, 1=Bezier, 2=AutoBezier, 3=LaneProfile. */
-	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Settings|ZoneGraph", meta=(PCG_Overridable, DisplayName="Road Point Type (Attr)", EditCondition="bOverrideRoadPointType"))
-	FName RoadPointTypeAttribute = FName("RoadPointType");
-
-
-	
-	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Settings|ZoneGraph")
-	FZoneLaneProfileRef LaneProfile;
-
-	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Settings|ZoneGraph", meta=(PCG_NotOverridable, InlineEditConditionToggle))
-	bool bOverrideLaneProfile = false;
-
-	/** Lane profile override. Read from: Points (polygons), Edges then Points fallback (roads, majority vote). Attribute type: FName. Must match a registered lane profile name in ZoneGraph settings. */
-	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Settings|ZoneGraph", meta=(PCG_Overridable, DisplayName="Lane Profile (Attr)", EditCondition="bOverrideLaneProfile"))
-	FName LaneProfileAttribute = FName("LaneProfile");
-
-
-	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Settings|ZoneGraph")
-	FZoneGraphTagMask AdditionalIntersectionTags = FZoneGraphTagMask::None;
-
-	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Settings|ZoneGraph", meta=(PCG_NotOverridable, InlineEditConditionToggle))
-	bool bOverrideAdditionalIntersectionTags = false;
-
-	/** Per-point intersection tag override. Read from: Points. Attribute type: int32, interpreted as a ZoneGraph tag bitmask (uint32). */
-	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Settings|ZoneGraph", meta=(PCG_Overridable, DisplayName="Intersection Tags (Attr)", EditCondition="bOverrideAdditionalIntersectionTags"))
-	FName AdditionalIntersectionTagsAttribute = FName("IntersectionTags");
+	FPCGExZGRoadSettings RoadSettings;
 
 	/** Output polygon shapes as closed PCG paths. */
 	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Settings|Output")
@@ -325,9 +387,18 @@ namespace PCGExClusterToZoneGraph
 		double CachedTotalProfileWidth = 0;
 		bool bReverseLaneProfileOverride = false;
 
+		// Per-endpoint cached polygon point properties (resolved from edge shorthands)
+		float CachedInnerTurnRadiusStart = 100.0f;
+		float CachedInnerTurnRadiusEnd = 100.0f;
+		float CachedRollStart = 0.0f;
+		float CachedRollEnd = 0.0f;
+		int32 CachedConnectionRestrictionsStart = 0;
+		int32 CachedConnectionRestrictionsEnd = 0;
+
 		explicit FZGRoad(FProcessor* InProcessor, const TSharedPtr<PCGExClusters::FNodeChain>& InChain, const bool InReverse);
 		void ResolveLaneProfile(const TSharedPtr<PCGExClusters::FCluster>& Cluster);
 		void ResolveReverseLaneProfile(const TSharedPtr<PCGExClusters::FCluster>& Cluster);
+		void ResolvePolygonPointProperties(const TSharedPtr<PCGExClusters::FCluster>& Cluster);
 		void Precompute(const TSharedPtr<PCGExClusters::FCluster>& Cluster);
 		void Compile();
 		void BuildPathOutput(const TSharedPtr<PCGExData::FPointIO>& InPathIO) const;
@@ -387,6 +458,13 @@ namespace PCGExClusterToZoneGraph
 		TSharedPtr<PCGExData::TBuffer<FName>> EdgeLaneProfileBuffer;
 
 		TSharedPtr<PCGExDetails::TSettingValue<double>> TangentLengthGetter;
+
+		// Edge-sourced polygon point property getters
+		TSharedPtr<PCGExDetails::TSettingValue<float>> InnerTurnRadiusStartGetter;
+		TSharedPtr<PCGExDetails::TSettingValue<float>> InnerTurnRadiusEndGetter;
+		TSharedPtr<PCGExDetails::TSettingValue<float>> RollStartGetter;
+		TSharedPtr<PCGExDetails::TSettingValue<float>> RollEndGetter;
+		TSharedPtr<PCGExData::TBuffer<int32>> ConnectionRestrictionsBuffer;
 
 	public:
 		FProcessor(const TSharedRef<PCGExData::FFacade>& InVtxDataFacade, const TSharedRef<PCGExData::FFacade>& InEdgeDataFacade)
