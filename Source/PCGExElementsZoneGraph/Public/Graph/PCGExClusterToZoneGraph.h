@@ -113,28 +113,31 @@ struct PCGEXELEMENTSZONEGRAPH_API FPCGExZGPolygonSettings
 	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = Settings, meta=(EditConditionHides, EditCondition="IntersectionTagsMode == EPCGExZGBitmaskMode::ValueMap"))
 	TMap<int32, FZoneGraphTagMask> IntersectionTagsValueMap;
 
+	
 	/** Inner turn radius for polygon arc routing. Read from: Edges (nearest edge to polygon connection). */
-	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = Settings, meta=(PCG_Overridable, DisplayName="Primary", CategorySeparator="Inner Turn Radius"))
+	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = Settings, meta=(PCG_Overridable, DisplayName="Primary Turn Radius", CategorySeparator="Inner Turn Radius"))
 	FPCGExInputShorthandNameFloat InnerTurnRadiusPrimary = FPCGExInputShorthandNameFloat(FName("InnerTurnRadius"), 100.0f, false);
 
 	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = Settings, meta=(PCG_NotOverridable, InlineEditConditionToggle))
 	bool bSeparateInnerTurnRadiusSecondary = false;
 
 	/** Separate inner turn radius for the end polygon connection. When disabled, Primary value is used for both. */
-	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = Settings, meta=(PCG_Overridable, DisplayName="Secondary", EditCondition="bSeparateInnerTurnRadiusSecondary"))
+	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = Settings, meta=(PCG_Overridable, DisplayName="Secondary Turn Radius", EditCondition="bSeparateInnerTurnRadiusSecondary"))
 	FPCGExInputShorthandNameFloat InnerTurnRadiusSecondary = FPCGExInputShorthandNameFloat(FName("InnerTurnRadius"), 100.0f, false);
-
+	
+	
 	/** Roll angle (degrees) applied to polygon connection points. Read from: Edges (nearest edge to polygon connection). */
-	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = Settings, meta=(PCG_Overridable, DisplayName="Primary", CategorySeparator="Roll"))
+	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = Settings, meta=(PCG_Overridable, DisplayName="Primary Roll", CategorySeparator="Roll"))
 	FPCGExInputShorthandNameFloat RollPrimary = FPCGExInputShorthandNameFloat(FName("Roll"), 0.0f, false);
 
 	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = Settings, meta=(PCG_NotOverridable, InlineEditConditionToggle))
 	bool bSeparateRollSecondary = false;
 
 	/** Separate roll for the end polygon connection. When disabled, Primary value is used for both. */
-	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = Settings, meta=(PCG_Overridable, DisplayName="Secondary", EditCondition="bSeparateRollSecondary"))
+	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = Settings, meta=(PCG_Overridable, DisplayName="Secondary Roll", EditCondition="bSeparateRollSecondary"))
 	FPCGExInputShorthandNameFloat RollSecondary = FPCGExInputShorthandNameFloat(FName("Roll"), 0.0f, false);
 
+	
 	/** How lane connection restrictions are sourced. */
 	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = Settings, meta=(CategorySeparator="Connection Restrictions"))
 	EPCGExZGBitmaskMode ConnectionRestrictionMode = EPCGExZGBitmaskMode::None;
@@ -267,27 +270,23 @@ public:
 	EPCGExZGOrientationMode OrientationMode = EPCGExZGOrientationMode::DepthFirst;
 
 	/** Flip all road orientations. */
-	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Settings|Direction", meta=(EditCondition="OrientationMode != EPCGExZGOrientationMode::SortDirection"))
+	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Settings|Direction", meta=(EditCondition="OrientationMode != EPCGExZGOrientationMode::SortDirection", EditConditionHides))
 	bool bInvertOrientation = false;
 
 	/** Global direction vector used to orient roads. Each road is oriented so its travel direction aligns with this vector. */
-	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Settings|Direction", meta=(EditCondition="OrientationMode == EPCGExZGOrientationMode::GlobalDirection"))
+	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Settings|Direction", meta=(EditCondition="OrientationMode == EPCGExZGOrientationMode::GlobalDirection", EditConditionHides))
 	FVector OrientationDirection = FVector::ForwardVector;
 
 	/** Enable the use of filters to define whether a road direction should be flipped or not (reversing the auto-computed direction). */
 	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Settings|Direction")
 	bool bEnableFlipFilters = false;
-	
-	/** Comma separated tags */
-	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = Settings, meta=(PCG_Overridable))
-	FString CommaSeparatedComponentTags = TEXT("PCGExZoneGraph");
 
 	/** Polygon intersection settings. */
-	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Settings|ZoneGraph")
+	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = Settings)
 	FPCGExZGPolygonSettings PolygonSettings;
 
 	/** Road spline settings. */
-	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Settings|ZoneGraph")
+	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = Settings)
 	FPCGExZGRoadSettings RoadSettings;
 
 	/** Output polygon shapes as closed PCG paths. */
@@ -298,13 +297,19 @@ public:
 	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Settings|Output")
 	bool bOutputRoadPaths = false;
 
-	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = Settings, meta=(PCG_Overridable, EditCondition="bOutputRoadPaths"))
+	/**  */
+	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Settings|Output", meta=(PCG_Overridable, EditCondition="bOutputRoadPaths", EditConditionHides))
 	FName ArriveName = "ArriveTangent";
 
-	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = Settings, meta=(PCG_Overridable, EditCondition="bOutputRoadPaths"))
+	/**  */
+	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Settings|Output", meta=(PCG_Overridable, EditCondition="bOutputRoadPaths", EditConditionHides))
 	FName LeaveName = "LeaveTangent";
-	
-	
+
+
+	/** Comma separated tags */
+	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = Settings, meta=(PCG_Overridable), AdvancedDisplay)
+	FString CommaSeparatedComponentTags = TEXT("PCGExZoneGraph");
+
 	/** Specify a list of functions to be called on the target actor after dynamic mesh creation. Functions need to be parameter-less and with "CallInEditor" flag enabled. */
 	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = Settings, AdvancedDisplay)
 	TArray<FName> PostProcessFunctionNames;
@@ -319,7 +324,7 @@ private:
 struct FPCGExClusterToZoneGraphContext final : FPCGExClustersProcessorContext
 {
 	friend class FPCGExClusterToZoneGraphElement;
-	
+
 	TArray<TObjectPtr<const UPCGExPointFilterFactoryData>> FlipEdgeFilterFactories;
 
 	TArray<FString> ComponentTags;
