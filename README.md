@@ -1,28 +1,70 @@
-![UE 5.7](https://img.shields.io/badge/UE-5.7-darkgreen) ![5.6](https://img.shields.io/badge/5.6-darkgreen) ![5.5](https://img.shields.io/badge/5.5-darkgreen) [![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/Nebukam/PCGExtendedToolkitZoneGraph)
-# PCG Extended Toolkit + Zone Graph
+![UE 5.7](https://img.shields.io/badge/UE-5.7-darkgreen)
 
-![PCGEx](https://raw.githubusercontent.com/Nebukam/PCGExtendedToolkit/refs/heads/docs/_sources/smol-logo.png)
+<p align="center">
+  <img src="https://github.com/Nebukam/PCGExElementsZoneGraph/blob/main/Resources/ZG_Logo.png" alt="PCGEx Logo">
+</p>
 
-## Purpose of Plugin
+<h1 align="center">PCGEx + ZoneGraph</h1>
 
-This **experimental** ZoneGraph plugin allows [PCG Extended Toolkit](https://nebukan.github.io/PCGExtendedToolkit) data to be an input source for the [ZoneGraph Plugin]() (also currently **experimental**) from Epic Games.
+<p align="center">
+  <strong>Generate ZoneGraph data for AI navigation from PCGEx clusters</strong><br>
+  Convert PCGEx cluster topology into ZoneGraph lanes and zones.
+</p>
 
-PCGExtendedToolkitZoneGraph provides a single PCG Element node, PCGExClusterToZoneGraph, which executes on the main thread and converts a Cluster from PCGEx to a ZoneGraph for the Epic Games plugin.
+<p align="center">
+  <a href="https://pcgex.gitbook.io/pcgex/zone-graph">Documentation</a> •
+  <a href="https://discord.gg/mde2vC5gbE">Discord</a> •
+  <a href="https://www.fab.com/listings/e9d0c0a1-5bae-4dc8-8d17-3f1a1877bf91">FAB</a>
+</p>
 
-## EXPERIMENTAL Status
+---
 
-Both PCGExtendedToolkitZoneGraph (this plugin) and the ZoneGraph plugin on which it relies are **experimental** code. Epic Games warns "ZoneGraph is currently an experimental plugin that will have API breaking changes as its development progresses towards a full release in later engine versions." PCGExtendedToolkit is released but is under active development as well. Given these factors, PCGExtendedToolkitZoneGraph should be approached carefully and is not recommended for shipping products.
+## What is PCGEx + ZoneGraph?
 
-## Getting Started
+This is a **companion plugin for [PCGEx](https://github.com/Nebukam/PCGExtendedToolkit)** that bridges PCGEx cluster data with Epic's [ZoneGraph plugin](https://dev.epicgames.com/community/learning/tutorials/qz6r/unreal-engine-zonegraph-quick-start-guide), converting cluster topology into ZoneGraph data for AI navigation.
 
-Begin by installing PCGExtendedToolkit and ZoneGraph plugins (order does not matter) and restarting the engine once both are enabled. Refer to the documentation for the respective plugins, listed below, for more detailed installation instructions.
+### Experimental Status
 
-Once the two prerequisite plugins are enabled and the Unreal Editor restarts without problems, add PCGExtendedToolkitZoneGraph plugin to its own subdirectory under the project or the engine Plugins directory, and compile the plugin if required. Enable PCGExtendedToolkitZoneGraph in your Project Settings, and restart the engine once more.
+Epic's ZoneGraph plugin is **experimental**. Epic warns that "ZoneGraph will have API breaking changes as its development progresses." If something breaks, [open an issue](https://github.com/Nebukam/PCGExElementsZoneGraph/issues) and I'll look into it.
 
-- **[PCG Extended Toolkit Documentation](https://pcgex.gitbook.io/pcgex)**  
-- **[PCG Ex Installation](https://nebukam.github.io/PCGExtendedToolkit/installation.html) in your own project**
-- **[ZoneGraph Quick Start Guide](https://dev.epicgames.com/community/learning/tutorials/qz6r/unreal-engine-zonegraph-quick-start-guide)**
+---
 
+## Requirements
 
-For questions & support, join the [PCGEx Discord Server](https://discord.gg/mde2vC5gbE)!
+- **Unreal Engine 5.7+**
+- **[PCGExtendedToolkit](https://github.com/Nebukam/PCGExtendedToolkit)** — Core PCGEx plugin (free, MIT licensed)
+- **ZoneGraph** — Epic's experimental ZoneGraph plugin (included with the engine)
 
+---
+
+## Installation
+
+### From FAB
+
+Get the latest release from the **[FAB Marketplace](https://www.fab.com/listings/e9d0c0a1-5bae-4dc8-8d17-3f1a1877bf91)**.
+
+### From Source
+
+1. Clone this repository into your project's `Plugins/` folder
+2. Ensure **PCGExtendedToolkit** and **ZoneGraph** are both enabled
+3. Regenerate project files and build
+
+---
+
+## License
+
+> **This plugin is source-available**
+
+- **Personal use** — Free. Individuals may use, copy, and modify the plugin for non-commercial and personal projects at no cost.
+- **Studio / Professional use** — Requires a paid license, available through [FAB](https://www.fab.com/listings/e9d0c0a1-5bae-4dc8-8d17-3f1a1877bf91) under the Professional pricing tier.
+- **Custom licensing** — Alternative licensing arrangements are available and are not bound to the FAB platform. Contact me directly to discuss terms.
+
+See [LICENSE](LICENSE) for full terms.
+
+---
+
+## Support
+
+- **[Discord](https://discord.gg/mde2vC5gbE)** — Community support and discussion
+- **[Documentation](https://pcgex.gitbook.io/pcgex)** — Guides and tutorials
+- **[Patreon](https://www.patreon.com/c/pcgex)** — Support PCGEx development

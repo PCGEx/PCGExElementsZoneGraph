@@ -4,12 +4,12 @@
 #pragma once
 
 #include "CoreMinimal.h"
-#include "Modules/ModuleManager.h"
+#include "PCGExEditorModuleInterface.h"
 
-class FPCGExtendedToolkitZoneGraphModule final : public IModuleInterface
+class FPCGExElementsZoneGraphEditorModule final : public IPCGExEditorModuleInterface
 {
+	PCGEX_MODULE_BODY
+
 public:
-	/** IModuleInterface implementation */
 	virtual void StartupModule() override;
-	virtual void ShutdownModule() override;
 };

@@ -1,23 +1,23 @@
 {
   "FileVersion": 3,
   "Version": 1,
-  "VersionName": "0.1",
-  "FriendlyName": "PCGExtendedToolkit + Zone Graph",
+  "VersionName": "1.0",
+  "FriendlyName": "PCGEx + Zone Graph",
   "Description": "PCG Extended Toolkit Interop with Zone Graph plugin.",
   "Category": "PCG",
   "CreatedBy": "Timothé Lapetite",
-  "CreatedByURL": "https://github.com/Nebukam/PCGExtendedToolkitZoneGraph",
-  "DocsURL": "https://nebukam.github.io/PCGExtendedToolkitZoneGraph/",
-  "FabURL": "com.epicgames.launcher://ue/Fab/product/---",
+  "CreatedByURL": "https://github.com/Nebukam/PCGExElementsZoneGraph",
+  "DocsURL": "https://nebukam.github.io/PCGExElementsZoneGraph/",
+  "FabURL": "com.epicgames.launcher://ue/Fab/product/e5a65f6f-7960-46c2-a3db-431d67dab091",
   "SupportURL": "https://discord.gg/mde2vC5gbE",
   "CanContainContent": true,
   "EngineVersion": "5.7.0",
-  "IsBetaVersion": true,
-  "IsExperimentalVersion": true,
+  "IsBetaVersion": false,
+  "IsExperimentalVersion": false,
   "Installed": false,
   "Modules": [
     {
-      "Name": "PCGExtendedToolkitZoneGraph",
+      "Name": "PCGExElementsZoneGraph",
       "Type": "Runtime",
       "LoadingPhase": "Default",
       "PlatformAllowList": [
@@ -30,16 +30,13 @@
       ]
     },
     {
-      "Name": "PCGExtendedToolkitZoneGraphEditor",
+      "Name": "PCGExElementsZoneGraphEditor",
       "Type": "Editor",
       "LoadingPhase": "Default",
       "PlatformAllowList": [
         "Win64",
         "Mac",
-        "IOS",
-        "Android",
-        "Linux",
-        "LinuxArm64"
+        "Linux"
       ]
     }
   ],

@@ -3,9 +3,9 @@
 
 using UnrealBuildTool;
 
-public class PCGExtendedToolkitZoneGraph : ModuleRules
+public class PCGExElementsZoneGraph : ModuleRules
 {
-	public PCGExtendedToolkitZoneGraph(ReadOnlyTargetRules Target) : base(Target)
+	public PCGExElementsZoneGraph(ReadOnlyTargetRules Target) : base(Target)
 	{
 		PCHUsage = PCHUsageMode.UseExplicitOrSharedPCHs;
 
@@ -31,8 +31,10 @@ public class PCGExtendedToolkitZoneGraph : ModuleRules
 				"Engine",
 				"PCG",
 				"PCGExCore",
+				"PCGExFilters",
 				"PCGExFoundations",
 				"PCGExGraphs",
+				"PCGExProperties",
 				"ZoneGraph",
 			}
 		);
