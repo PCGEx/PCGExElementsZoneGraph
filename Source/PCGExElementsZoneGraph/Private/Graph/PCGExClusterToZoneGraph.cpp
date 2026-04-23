@@ -6,6 +6,7 @@
 #include "PCGComponent.h"
 #include "PCGExSubSystem.h"
 #include "ZoneShapeComponent.h"
+#include "ZoneGraphSubsystem.h"
 #include "Core/PCGExPointFilter.h"
 #include "Clusters/PCGExCluster.h"
 #include "Clusters/Artifacts/PCGExChain.h"
@@ -551,6 +552,43 @@ namespace PCGExClusterToZoneGraph
 				bDegenerate = true;
 			}
 		}
+		else if (Chain->bIsClosedLoop && (StartEndpoint.bValid || EndEndpoint.bValid))
+		{
+			// Self-connecting closed loop: both endpoints attach to the same polygon at Seed.
+			// Snap endpoints to polygon boundary so ZoneGraph detects the connection.
+			const bool bTrim = S->RoadSettings.bTrimRoadEndpoints;
+			const double BufferSq = S->RoadSettings.EndpointTrimBuffer * S->RoadSettings.EndpointTrimBuffer;
+
+			if (StartEndpoint.bValid && bTrim && !FirstNode->IsLeaf())
+			{
+				const FVector SnapPos = StartEndpoint.PolygonCenter + StartEndpoint.Direction * StartEndpoint.Radius;
+				PrecomputedPoints[0].Position = SnapPos;
+				if (BufferSq > 0)
+				{
+					while (PrecomputedPoints.Num() > 2 &&
+						(PrecomputedPoints[1].Position - SnapPos).SizeSquared() < BufferSq)
+					{
+						PrecomputedPoints.RemoveAt(1);
+					}
+				}
+			}
+
+			if (EndEndpoint.bValid && bTrim && !LastNode->IsLeaf())
+			{
+				const FVector SnapPos = EndEndpoint.PolygonCenter + EndEndpoint.Direction * EndEndpoint.Radius;
+				PrecomputedPoints.Last().Position = SnapPos;
+				if (BufferSq > 0)
+				{
+					while (PrecomputedPoints.Num() > 2 &&
+						(PrecomputedPoints[PrecomputedPoints.Num() - 2].Position - SnapPos).SizeSquared() < BufferSq)
+					{
+						PrecomputedPoints.RemoveAt(PrecomputedPoints.Num() - 2);
+					}
+				}
+			}
+
+			if (PrecomputedPoints.Num() < 2) { bDegenerate = true; }
+		}
 
 		// --- Auto/CatmullRom tangent pass ---
 		// Computed from final PrecomputedPoints positions (after trimming, crossing points included).
@@ -612,7 +650,20 @@ namespace PCGExClusterToZoneGraph
 	{
 		Component->SetShapeType(FZoneShapeType::Spline);
 		Component->SetCommonLaneProfile(CachedLaneProfile);
+		// Spline connectors derive bReverseLaneProfile from the component flag (start=flag, end=!flag).
+		// Polygon arm bRLP = (FromStart != override). For connection both sides must differ, so Component.bRLP = override.
+		Component->SetReverseLaneProfile(bReverseLaneProfileOverride);
 		Component->GetMutablePoints() = MoveTemp(PrecomputedPoints);
+
+		// Update hash grid bounds now that points are set, so FindShapeConnections can locate this road.
+		// Components register with empty bounds before Compile(); the spatial hash must be correct first.
+#if WITH_EDITOR
+		if (UZoneGraphSubsystem* ZG = UWorld::GetSubsystem<UZoneGraphSubsystem>(Component->GetWorld()))
+		{
+			ZG->GetBuilder().OnZoneShapeComponentChanged(*Component);
+		}
+#endif
+
 		Component->UpdateShape();
 	}
 
@@ -751,11 +802,33 @@ namespace PCGExClusterToZoneGraph
 			{
 				const bool bSeedA = (NodeIndex == Roads[A]->Chain->Seed.Node);
 				const bool bEndA = (NodeIndex == Roads[A]->Chain->Links.Last().Node);
-				const FVector DirA = Roads[A]->Chain->GetEdgeDir(Cluster, (bSeedA && bEndA) ? FromStart[A] : bSeedA);
+				FVector DirA;
+				if (Roads[A]->Chain->bIsClosedLoop && bSeedA && !Roads[A]->Chain->Links.IsEmpty())
+				{
+					const bool bExitA = (FromStart[A] != Roads[A]->bIsReversed);
+					DirA = bExitA
+						? Cluster->GetDir(Roads[A]->Chain->Seed.Node, Roads[A]->Chain->Links[0].Node)
+						: Cluster->GetDir(Roads[A]->Chain->Seed.Node, Roads[A]->Chain->Links.Last().Node);
+				}
+				else
+				{
+					DirA = Roads[A]->Chain->GetEdgeDir(Cluster, (bSeedA && bEndA) ? FromStart[A] : bSeedA);
+				}
 
 				const bool bSeedB = (NodeIndex == Roads[B]->Chain->Seed.Node);
 				const bool bEndB = (NodeIndex == Roads[B]->Chain->Links.Last().Node);
-				const FVector DirB = Roads[B]->Chain->GetEdgeDir(Cluster, (bSeedB && bEndB) ? FromStart[B] : bSeedB);
+				FVector DirB;
+				if (Roads[B]->Chain->bIsClosedLoop && bSeedB && !Roads[B]->Chain->Links.IsEmpty())
+				{
+					const bool bExitB = (FromStart[B] != Roads[B]->bIsReversed);
+					DirB = bExitB
+						? Cluster->GetDir(Roads[B]->Chain->Seed.Node, Roads[B]->Chain->Links[0].Node)
+						: Cluster->GetDir(Roads[B]->Chain->Seed.Node, Roads[B]->Chain->Links.Last().Node);
+				}
+				else
+				{
+					DirB = Roads[B]->Chain->GetEdgeDir(Cluster, (bSeedB && bEndB) ? FromStart[B] : bSeedB);
+				}
 
 				return PCGExMath::GetRadiansBetweenVectors(DirA, FVector::ForwardVector) > PCGExMath::GetRadiansBetweenVectors(DirB, FVector::ForwardVector);
 			});
@@ -773,7 +846,20 @@ namespace PCGExClusterToZoneGraph
 
 			// For lollipop chains (single breakpoint on closed loop), seed==end node.
 			// Use FromStart to disambiguate: start connection → first edge dir, end connection → last edge dir.
-			const FVector RoadDirection = Road->Chain->GetEdgeDir(Cluster, (bAtChainSeed && bAtChainEnd) ? FromStart[Ri] : bAtChainSeed);
+			// For self-connecting closed loops at seed polygon: Seed.Edge is overwritten to closing edge,
+			// so GetFirstEdgeDir gives wrong direction. Use Links[0].Node for exit, Links.Last() for entry.
+			FVector RoadDirection;
+			if (Road->Chain->bIsClosedLoop && bAtChainSeed && !Road->Chain->Links.IsEmpty())
+			{
+				const bool bIsExitSide = (FromStart[Ri] != Road->bIsReversed);
+				RoadDirection = bIsExitSide
+					? Cluster->GetDir(Road->Chain->Seed.Node, Road->Chain->Links[0].Node)
+					: Cluster->GetDir(Road->Chain->Seed.Node, Road->Chain->Links.Last().Node);
+			}
+			else
+			{
+				RoadDirection = Road->Chain->GetEdgeDir(Cluster, (bAtChainSeed && bAtChainEnd) ? FromStart[Ri] : bAtChainSeed);
+			}
 
 			// Store polygon boundary data on the road for precise intersection
 			FZGRoad::FPolygonEndpoint EP;
@@ -851,6 +937,16 @@ namespace PCGExClusterToZoneGraph
 		}
 
 		Component->GetMutablePoints() = MoveTemp(PrecomputedPoints);
+
+		// Update hash grid bounds now that points are set, so road UpdateShape calls can find this polygon.
+		// Components register with empty bounds before Compile(); FindShapeConnections uses the spatial hash.
+#if WITH_EDITOR
+		if (UZoneGraphSubsystem* ZG = UWorld::GetSubsystem<UZoneGraphSubsystem>(Component->GetWorld()))
+		{
+			ZG->GetBuilder().OnZoneShapeComponentChanged(*Component);
+		}
+#endif
+
 		Component->UpdateShape();
 	}
 
@@ -1022,6 +1118,7 @@ namespace PCGExClusterToZoneGraph
 
 		TArray<bool> DFSReversed;
 		if (Settings->OrientationMode == EPCGExZGOrientationMode::DepthFirst) { ComputeDFSOrientation(DFSReversed); }
+		else if (Settings->OrientationMode == EPCGExZGOrientationMode::TrafficFlow) { ComputeTrafficFlowOrientation(DFSReversed); }
 
 		for (int i = 0; i < NumChains; i++)
 		{
@@ -1035,6 +1132,7 @@ namespace PCGExClusterToZoneGraph
 			switch (Settings->OrientationMode)
 			{
 			case EPCGExZGOrientationMode::DepthFirst:
+			case EPCGExZGOrientationMode::TrafficFlow:
 				bReverse = DFSReversed[i] != Settings->bInvertOrientation;
 				if (bReverse) { Swap(StartNode, EndNode); }
 				break;
@@ -1061,6 +1159,25 @@ namespace PCGExClusterToZoneGraph
 			if (Chain->bIsClosedLoop && Start->IsBinary() && End->IsBinary())
 			{
 				// Roaming closed loop, road only!
+				continue;
+			}
+
+			if (Chain->bIsClosedLoop)
+			{
+				// Non-roaming closed loop: wraps back to seed node. The binary "end" node is
+				// the last step before returning — not a real junction. Connect both road ends
+				// to the seed polygon only.
+				const int32 SeedNode = Chain->Seed.Node;
+				TSharedPtr<FZGPolygon>* PolygonPtr = Map.Find(SeedNode);
+				if (!PolygonPtr)
+				{
+					TSharedPtr<FZGPolygon> NewPolygon = MakeShared<FZGPolygon>(this, Cluster->GetNode(SeedNode));
+					Polygons.Add(NewPolygon);
+					Map.Add(SeedNode, NewPolygon);
+					PolygonPtr = Map.Find(SeedNode);
+				}
+				(*PolygonPtr)->Add(Road, true);  // road start connects here
+				(*PolygonPtr)->Add(Road, false); // road end connects here
 				continue;
 			}
 
@@ -1297,6 +1414,145 @@ namespace PCGExClusterToZoneGraph
 				}
 			}
 			// Both leaf → keep default (false)
+		}
+	}
+
+	void FProcessor::ComputeTrafficFlowOrientation(TArray<bool>& OutReversed) const
+	{
+		const int32 NumChains = ProcessedChains.Num();
+		OutReversed.Init(false, NumChains);
+
+		// For each node, track which chains connect through it and which end is which.
+		struct FAdj
+		{
+			int32 ChainIdx;
+			int32 OtherNode;
+			bool bIsSeed; // true = CurrentNode is the seed end of this chain
+		};
+
+		TMap<int32, TArray<FAdj>> NodeAdj;
+		for (int32 i = 0; i < NumChains; i++)
+		{
+			const auto& Chain = ProcessedChains[i];
+			if (!Chain) { continue; }
+			const int32 SN = Chain->Seed.Node;
+			const int32 EN = Chain->Links.Last().Node;
+			NodeAdj.FindOrAdd(SN).Add({i, EN, true});
+			NodeAdj.FindOrAdd(EN).Add({i, SN, false});
+		}
+
+		TArray<bool> Oriented;
+		Oriented.Init(false, NumChains);
+
+		TArray<int32> PropQueue;
+		TSet<int32> Queued;
+		int32 Head = 0;
+
+		auto EnqueueNode = [&](const int32 NodeIdx)
+		{
+			if (!Cluster->GetNode(NodeIdx)->IsLeaf() && !Queued.Contains(NodeIdx))
+			{
+				PropQueue.Add(NodeIdx);
+				Queued.Add(NodeIdx);
+			}
+		};
+
+		// Propagates orientation from all queued polygon nodes. Each unoriented chain at a
+		// queued node is oriented as CurrentNode→OtherNode (continuing flow forward).
+		auto Propagate = [&]()
+		{
+			while (Head < PropQueue.Num())
+			{
+				const int32 Cur = PropQueue[Head++];
+				const TArray<FAdj>* Adjs = NodeAdj.Find(Cur);
+				if (!Adjs) { continue; }
+
+				for (const FAdj& A : *Adjs)
+				{
+					if (Oriented[A.ChainIdx] || Cluster->GetNode(A.OtherNode)->IsLeaf()) { continue; }
+
+					// Orient chain so it flows Cur → OtherNode.
+					// bIsSeed=true means Cur==SN, so the natural SN→EN direction already flows Cur→Other: no reverse.
+					// bIsSeed=false means Cur==EN, so we must reverse to get Cur→Other direction.
+					OutReversed[A.ChainIdx] = !A.bIsSeed;
+					Oriented[A.ChainIdx] = true;
+					EnqueueNode(A.OtherNode);
+				}
+			}
+		};
+
+		// Phase 1: Orient leaf↔polygon chains and seed propagation from their polygon endpoints.
+		for (int32 i = 0; i < NumChains; i++)
+		{
+			const auto& Chain = ProcessedChains[i];
+			if (!Chain) { continue; }
+
+			const int32 SN = Chain->Seed.Node;
+			const int32 EN = Chain->Links.Last().Node;
+			const bool bSeedLeaf = Cluster->GetNode(SN)->IsLeaf();
+			const bool bEndLeaf = Cluster->GetNode(EN)->IsLeaf();
+
+			if (bSeedLeaf == bEndLeaf) { continue; } // both-leaf or both-poly: deferred
+
+			if (bSeedLeaf)
+			{
+				// Leaf→Polygon: natural direction is already leaf-first, no reverse.
+				OutReversed[i] = false;
+				Oriented[i] = true;
+				EnqueueNode(EN);
+			}
+			else
+			{
+				// Polygon→Leaf: reverse so the leaf becomes the logical start.
+				OutReversed[i] = true;
+				Oriented[i] = true;
+				EnqueueNode(SN);
+			}
+		}
+
+		// Phase 2: Propagate orientation inward from all leaf-seeded polygon nodes.
+		Propagate();
+
+		// Phase 3: Orient remaining chains that weren't reachable from any leaf (isolated loops).
+		// For each unresolved component, pick one chain's direction via the GlobalDir hint,
+		// then propagate to ensure the rest of the loop is consistent.
+		const FVector GlobalDir = Settings->OrientationDirection;
+		const bool bUseGlobalDir = !GlobalDir.IsNearlyZero();
+
+		for (int32 i = 0; i < NumChains; i++)
+		{
+			if (Oriented[i]) { continue; }
+
+			const auto& Chain = ProcessedChains[i];
+			if (!Chain) { continue; }
+
+			const int32 SN = Chain->Seed.Node;
+			const int32 EN = Chain->Links.Last().Node;
+
+			if (Cluster->GetNode(SN)->IsLeaf() && Cluster->GetNode(EN)->IsLeaf())
+			{
+				Oriented[i] = true; // leaf-leaf: default orientation is fine
+				continue;
+			}
+
+			// Seed this isolated loop component's orientation from a single chain,
+			// then propagate to orient all connected chains consistently.
+			bool bReverse;
+			if (bUseGlobalDir)
+			{
+				const FVector Dir = (Cluster->GetPos(EN) - Cluster->GetPos(SN)).GetSafeNormal();
+				bReverse = FVector::DotProduct(Dir, GlobalDir) < 0;
+			}
+			else
+			{
+				bReverse = SN > EN;
+			}
+
+			OutReversed[i] = bReverse;
+			Oriented[i] = true;
+
+			EnqueueNode(bReverse ? SN : EN);
+			Propagate();
 		}
 	}
 
