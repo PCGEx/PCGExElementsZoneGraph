@@ -1117,8 +1117,8 @@ namespace PCGExClusterToZoneGraph
 		Roads.Reserve(NumChains);
 
 		TArray<bool> DFSReversed;
-		if (Settings->OrientationMode == EPCGExZGOrientationMode::DepthFirst) { ComputeDFSOrientation(DFSReversed); }
-		else if (Settings->OrientationMode == EPCGExZGOrientationMode::TrafficFlow) { ComputeTrafficFlowOrientation(DFSReversed); }
+		if (Settings->OrientationMode == EPCGExZGOrientationMode::DepthFirst ||
+			Settings->OrientationMode == EPCGExZGOrientationMode::TrafficFlow) { ComputeTrafficFlowOrientation(DFSReversed); }
 
 		for (int i = 0; i < NumChains; i++)
 		{
@@ -1319,103 +1319,6 @@ namespace PCGExClusterToZoneGraph
 		// which runs on the main thread via the time-sliced loop mechanism.
 	}
 
-	void FProcessor::ComputeDFSOrientation(TArray<bool>& OutReversed) const
-	{
-		const int32 NumChains = ProcessedChains.Num();
-		OutReversed.Init(false, NumChains);
-
-		// BFS to assign depths to polygon nodes, then orient chains from lower to higher depth.
-		// Leaf edges always flow toward the polygon (leaf is start, polygon is end).
-		// This produces consistent lane profiles at intersections: incoming roads face toward
-		// the polygon and outgoing roads face away, giving the same global forward direction
-		// for through-traffic.
-
-		struct FAdj
-		{
-			int32 ChainIdx;
-			int32 OtherNode;
-			bool bIsSeed;
-		};
-
-		TMap<int32, TArray<FAdj>> NodeAdj;
-
-		for (int32 i = 0; i < NumChains; i++)
-		{
-			const auto& Chain = ProcessedChains[i];
-			if (!Chain) { continue; }
-
-			const int32 SN = Chain->Seed.Node;
-			const int32 EN = Chain->Links.Last().Node;
-
-			if (!Cluster->GetNode(SN)->IsLeaf()) { NodeAdj.FindOrAdd(SN).Add({i, EN, true}); }
-			if (!Cluster->GetNode(EN)->IsLeaf()) { NodeAdj.FindOrAdd(EN).Add({i, SN, false}); }
-		}
-
-		// BFS to assign depths
-		TMap<int32, int32> NodeDepth;
-		TArray<int32> Queue;
-
-		for (auto& [Node, _] : NodeAdj)
-		{
-			if (NodeDepth.Contains(Node)) { continue; }
-			NodeDepth.Add(Node, 0);
-			Queue.Add(Node);
-
-			int32 Head = Queue.Num() - 1;
-			while (Head < Queue.Num())
-			{
-				const int32 Current = Queue[Head++];
-				const int32 CurrDepth = NodeDepth[Current];
-
-				if (const TArray<FAdj>* Neighbors = NodeAdj.Find(Current))
-				{
-					for (const FAdj& A : *Neighbors)
-					{
-						if (!Cluster->GetNode(A.OtherNode)->IsLeaf() && !NodeDepth.Contains(A.OtherNode))
-						{
-							NodeDepth.Add(A.OtherNode, CurrDepth + 1);
-							Queue.Add(A.OtherNode);
-						}
-					}
-				}
-			}
-		}
-
-		// Orient chains based on depth ordering
-		for (int32 i = 0; i < NumChains; i++)
-		{
-			const auto& Chain = ProcessedChains[i];
-			if (!Chain) { continue; }
-
-			const int32 SN = Chain->Seed.Node;
-			const int32 EN = Chain->Links.Last().Node;
-			const bool bSeedIsLeaf = Cluster->GetNode(SN)->IsLeaf();
-			const bool bEndIsLeaf = Cluster->GetNode(EN)->IsLeaf();
-
-			if (bSeedIsLeaf && !bEndIsLeaf)
-			{
-				// Seed is leaf, End is polygon → flow leaf→polygon → no reverse
-				OutReversed[i] = false;
-			}
-			else if (!bSeedIsLeaf && bEndIsLeaf)
-			{
-				// Seed is polygon, End is leaf → flow leaf→polygon → reverse
-				OutReversed[i] = true;
-			}
-			else if (!bSeedIsLeaf && !bEndIsLeaf)
-			{
-				// Both polygon nodes → flow from lower BFS depth to higher
-				const int32 SeedDepth = NodeDepth.FindRef(SN);
-				const int32 EndDepth = NodeDepth.FindRef(EN);
-
-				if (SeedDepth > EndDepth || (SeedDepth == EndDepth && SN > EN))
-				{
-					OutReversed[i] = true;
-				}
-			}
-			// Both leaf → keep default (false)
-		}
-	}
 
 	void FProcessor::ComputeTrafficFlowOrientation(TArray<bool>& OutReversed) const
 	{
