@@ -18,8 +18,9 @@ UENUM(BlueprintType)
 enum class EPCGExZGOrientationMode : uint8
 {
 	SortDirection   = 0 UMETA(DisplayName="Sort Direction", Tooltip="Use the Direction Settings sorting rules to determine road orientation."),
-	DepthFirst      = 1 UMETA(DisplayName="Depth-First", Tooltip="Use BFS depth ordering to orient roads from lower to higher depth. Consistent for tree-like graphs."),
+	DepthFirst      = 1 UMETA(DisplayName="Traffic Flow (Legacy)", Tooltip="Deprecated alias for Traffic Flow — kept for backward compatibility with saved assets."),
 	GlobalDirection = 2 UMETA(DisplayName="Global Direction", Tooltip="Orient all roads to flow along a global direction vector."),
+	TrafficFlow     = 3 UMETA(DisplayName="Traffic Flow", Tooltip="Propagate orientation from leaf nodes inward. Produces consistent lane direction at intersections and along loops. Isolated loops use the Orientation Direction vector as a CW/CCW hint."),
 };
 
 UENUM(BlueprintType)
@@ -267,14 +268,14 @@ public:
 
 	/** How road orientation is determined. Affects lane profile alignment at intersections. */
 	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Settings|Direction")
-	EPCGExZGOrientationMode OrientationMode = EPCGExZGOrientationMode::DepthFirst;
+	EPCGExZGOrientationMode OrientationMode = EPCGExZGOrientationMode::TrafficFlow;
 
 	/** Flip all road orientations. */
 	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Settings|Direction", meta=(EditCondition="OrientationMode != EPCGExZGOrientationMode::SortDirection", EditConditionHides))
 	bool bInvertOrientation = false;
 
-	/** Global direction vector used to orient roads. Each road is oriented so its travel direction aligns with this vector. */
-	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Settings|Direction", meta=(EditCondition="OrientationMode == EPCGExZGOrientationMode::GlobalDirection", EditConditionHides))
+	/** Global direction vector used to orient roads. In GlobalDirection mode, each road aligns with this vector. In TrafficFlow mode, used as a CW/CCW hint for isolated loops with no leaf connections. */
+	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Settings|Direction", meta=(EditCondition="OrientationMode == EPCGExZGOrientationMode::GlobalDirection || OrientationMode == EPCGExZGOrientationMode::TrafficFlow", EditConditionHides))
 	FVector OrientationDirection = FVector::ForwardVector;
 
 	/** Enable the use of filters to define whether a road direction should be flipped or not (reversing the auto-computed direction). */
@@ -490,7 +491,7 @@ namespace PCGExClusterToZoneGraph
 
 		virtual void Cleanup() override;
 
-		void ComputeDFSOrientation(TArray<bool>& OutReversed) const;
+		void ComputeTrafficFlowOrientation(TArray<bool>& OutReversed) const;
 		FZoneLaneProfileRef ResolveLaneProfileByName(FName ProfileName) const;
 	};
 
