@@ -554,8 +554,17 @@ namespace PCGExClusterToZoneGraph
 		}
 		else if (Chain->bIsClosedLoop && (StartEndpoint.bValid || EndEndpoint.bValid))
 		{
-			// Self-connecting closed loop: both endpoints attach to the same polygon at Seed.
-			// Snap endpoints to polygon boundary so ZoneGraph detects the connection.
+			// Self-connecting closed loop: both endpoints attach to the same seed polygon.
+			// PrecomputedPoints = [S, B1, ..., Bn]; the wrap edge Bn→S is implicit.
+			//
+			// Start side: PrecomputedPoints[0] is at S (== polygon center). Snapping it to the
+			// boundary is equivalent to trimming the S→B1 segment at the polygon boundary, so
+			// we keep the existing snap behavior here.
+			//
+			// End side: PrecomputedPoints.Last() is at Bn — an actual chain node, not the
+			// polygon center. Overwriting Bn with a position near S would skip Bn (and nearby
+			// nodes) from the spline whenever the loop is geometrically larger than the polygon
+			// radius. Instead, append a new crossing point on the implicit Bn→S wrap edge.
 			const bool bTrim = S->RoadSettings.bTrimRoadEndpoints;
 			const double BufferSq = S->RoadSettings.EndpointTrimBuffer * S->RoadSettings.EndpointTrimBuffer;
 
@@ -576,7 +585,16 @@ namespace PCGExClusterToZoneGraph
 			if (EndEndpoint.bValid && bTrim && !LastNode->IsLeaf())
 			{
 				const FVector SnapPos = EndEndpoint.PolygonCenter + EndEndpoint.Direction * EndEndpoint.Radius;
-				PrecomputedPoints.Last().Position = SnapPos;
+
+				FZoneShapePoint WrapCrossing(SnapPos);
+				FVector CrossingDir = (SnapPos - PrecomputedPoints.Last().Position).GetSafeNormal();
+				if (CrossingDir.IsNearlyZero()) { CrossingDir = -EndEndpoint.Direction; }
+				WrapCrossing.SetRotationFromForwardAndUp(CrossingDir, FVector::UpVector);
+				WrapCrossing.Type = DefaultPointType;
+				WrapCrossing.TangentLength = PrecomputedPoints.Last().TangentLength;
+
+				PrecomputedPoints.Add(WrapCrossing);
+
 				if (BufferSq > 0)
 				{
 					while (PrecomputedPoints.Num() > 2 &&
@@ -596,7 +614,11 @@ namespace PCGExClusterToZoneGraph
 		if (!bDegenerate && (S->RoadSettings.RoadTangentLengthMode == EPCGExZGTangentLengthMode::Auto || S->RoadSettings.RoadTangentLengthMode == EPCGExZGTangentLengthMode::CatmullRom))
 		{
 			const int32 Num = PrecomputedPoints.Num();
-			const bool bLoop = Chain->bIsClosedLoop;
+			// Wrap tangents only for true cyclic splines. Self-connecting closed loops have been
+			// trimmed to polygon boundaries on both ends; from ZG's perspective they're open
+			// splines, and wrapping would compute a tangent across the polygon interior at the
+			// endpoints (kinking the spline at the polygon arms).
+			const bool bLoop = Chain->bIsClosedLoop && !StartEndpoint.bValid && !EndEndpoint.bValid;
 			const double Scale = S->RoadSettings.TangentLengthScale;
 			const bool bCatmullRom = (S->RoadSettings.RoadTangentLengthMode == EPCGExZGTangentLengthMode::CatmullRom);
 
