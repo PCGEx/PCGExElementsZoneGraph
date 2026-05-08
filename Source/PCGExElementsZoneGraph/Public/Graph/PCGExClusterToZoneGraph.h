@@ -18,7 +18,7 @@ UENUM(BlueprintType)
 enum class EPCGExZGOrientationMode : uint8
 {
 	SortDirection   = 0 UMETA(DisplayName="Sort Direction", Tooltip="Use the Direction Settings sorting rules to determine road orientation."),
-	DepthFirst      = 1 UMETA(DisplayName="Traffic Flow (Legacy)", Tooltip="Deprecated alias for Traffic Flow — kept for backward compatibility with saved assets."),
+	DepthFirst      = 1 UMETA(DisplayName="Traffic Flow (Legacy)", Tooltip="Deprecated alias for Traffic Flow -- kept for backward compatibility with saved assets."),
 	GlobalDirection = 2 UMETA(DisplayName="Global Direction", Tooltip="Orient all roads to flow along a global direction vector."),
 	TrafficFlow     = 3 UMETA(DisplayName="Traffic Flow", Tooltip="Propagate orientation from leaf nodes inward. Produces consistent lane direction at intersections and along loops. Isolated loops use the Orientation Direction vector as a CW/CCW hint."),
 };
@@ -27,10 +27,31 @@ UENUM(BlueprintType)
 enum class EPCGExZGAutoRadiusMode : uint8
 {
 	Disabled       = 0 UMETA(DisplayName="Disabled"),
-	WidestLane     = 1 UMETA(DisplayName="Widest Lane"),
-	HalfProfile    = 2 UMETA(DisplayName="Half Profile Width"),
-	WidestLaneMin  = 3 UMETA(DisplayName="Widest Lane (Min)"),
-	HalfProfileMin = 4 UMETA(DisplayName="Half Profile Width (Min)"),
+	WidestLane     = 1 UMETA(DisplayName="Widest Lane",       Tooltip="Per-road: each road's own widest lane width."),
+	HalfProfile    = 2 UMETA(DisplayName="Half Profile",      Tooltip="Per-road: each road's own profile half-width."),
+	
+#pragma region DEPRECATED
+	
+	// Legacy -- migrated by ApplyDeprecation to (WidestLane, Min)
+	
+	WidestLaneMin  = 3 UMETA(Hidden),	
+	HalfProfileMin = 4 UMETA(Hidden),
+	
+#pragma endregion 
+	
+	
+	MaxWidestLane  = 5 UMETA(DisplayName="Max Widest Lane",   Tooltip="Aggregate: max widest-lane across all roads, applied uniformly to the polygon."),
+	MaxHalfProfile = 6 UMETA(DisplayName="Max Half Profile",  Tooltip="Aggregate: max half-profile across all roads, applied uniformly to the polygon."),
+	ConvexFit      = 7 UMETA(DisplayName="Convex Fit",        Tooltip="Per-road radius geometrically fitted to clear neighboring roads' profile strips."),
+};
+
+UENUM(BlueprintType)
+enum class EPCGExZGRadiusOverridePolicy : uint8
+{
+	Replace = 0 UMETA(DisplayName="Replace",     Tooltip="Auto value replaces the manual/attribute radius."),
+	Min     = 1 UMETA(DisplayName="Use as Min",  Tooltip="radius = max(manual, auto). Auto acts as a floor."),
+	Max     = 2 UMETA(DisplayName="Use as Max",  Tooltip="radius = min(manual, auto). Auto acts as a ceiling."),
+	Offset  = 3 UMETA(DisplayName="Additive",    Tooltip="radius = auto + manual. Manual is a uniform additive buffer."),
 };
 
 UENUM(BlueprintType)
@@ -77,6 +98,10 @@ struct PCGEXELEMENTSZONEGRAPH_API FPCGExZGPolygonSettings
 	/** Auto-compute polygon radius from connected road lane profiles. */
 	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = Settings)
 	EPCGExZGAutoRadiusMode AutoRadiusMode = EPCGExZGAutoRadiusMode::Disabled;
+
+	/** How the auto-computed value combines with the manual / attribute polygon radius. */
+	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = Settings, meta=(EditCondition="AutoRadiusMode != EPCGExZGAutoRadiusMode::Disabled", EditConditionHides))
+	EPCGExZGRadiusOverridePolicy AutoRadiusPolicy = EPCGExZGRadiusOverridePolicy::Replace;
 
 	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = Settings, meta=(CategorySeparator="Routing"))
 	EZoneShapePolygonRoutingType PolygonRoutingType = EZoneShapePolygonRoutingType::Arcs;
@@ -227,20 +252,12 @@ class UPCGExClusterToZoneGraphSettings : public UPCGExClustersProcessorSettings
 	GENERATED_BODY()
 
 public:
-	UPCGExClusterToZoneGraphSettings()
-	{
-		if (const UZoneGraphSettings* ZoneGraphSettings = GetDefault<UZoneGraphSettings>())
-		{
-			const TArray<FZoneLaneProfile>& Profiles = ZoneGraphSettings->GetLaneProfiles();
-			if (!Profiles.IsEmpty())
-			{
-				RoadSettings.LaneProfile = Profiles[0];
-			}
-		}
-	}
-
+	UPCGExClusterToZoneGraphSettings();
+	
 	//~Begin UPCGSettings
 #if WITH_EDITOR
+	virtual void ApplyDeprecation(UPCGNode* InOutNode) override;
+	
 	PCGEX_NODE_INFOS(ClusterToZoneGraph, "Cluster to Zone Graph", "Create Zone Graph from clusters.");
 	virtual FLinearColor GetNodeTitleColor() const override { return GetDefault<UPCGExGlobalSettings>()->ColorClusterOp; }
 	virtual void PostEditChangeProperty(struct FPropertyChangedEvent& PropertyChangedEvent) override;

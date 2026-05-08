@@ -35,7 +35,39 @@ namespace PCGExClusterToZoneGraph
 PCGExData::EIOInit UPCGExClusterToZoneGraphSettings::GetEdgeOutputInitMode() const { return PCGExData::EIOInit::Forward; }
 PCGExData::EIOInit UPCGExClusterToZoneGraphSettings::GetMainOutputInitMode() const { return PCGExData::EIOInit::Forward; }
 
+UPCGExClusterToZoneGraphSettings::UPCGExClusterToZoneGraphSettings()
+{
+	if (const UZoneGraphSettings* ZoneGraphSettings = GetDefault<UZoneGraphSettings>())
+	{
+		const TArray<FZoneLaneProfile>& Profiles = ZoneGraphSettings->GetLaneProfiles();
+		if (!Profiles.IsEmpty())
+		{
+			RoadSettings.LaneProfile = Profiles[0];
+		}
+	}
+}
+
 #if WITH_EDITOR
+void UPCGExClusterToZoneGraphSettings::ApplyDeprecation(UPCGNode* InOutNode)
+{
+	PCGEX_IF_VERSION_LOWER(1,75,14)
+	{
+		// Legacy *Min auto-radius modes are now (source, Min) tuples.
+		if (PolygonSettings.AutoRadiusMode == EPCGExZGAutoRadiusMode::WidestLaneMin)
+		{
+			PolygonSettings.AutoRadiusMode = EPCGExZGAutoRadiusMode::WidestLane;
+			PolygonSettings.AutoRadiusPolicy = EPCGExZGRadiusOverridePolicy::Min;
+		}
+		else if (PolygonSettings.AutoRadiusMode == EPCGExZGAutoRadiusMode::HalfProfileMin)
+		{
+			PolygonSettings.AutoRadiusMode = EPCGExZGAutoRadiusMode::HalfProfile;
+			PolygonSettings.AutoRadiusPolicy = EPCGExZGRadiusOverridePolicy::Min;
+		}
+	}
+	
+	Super::ApplyDeprecation(InOutNode);
+}
+
 void UPCGExClusterToZoneGraphSettings::PostEditChangeProperty(struct FPropertyChangedEvent& PropertyChangedEvent)
 {
 	RoadSettings.bCachedSupportsCustomLength = RoadSettings.bOverrideRoadPointType || RoadSettings.RoadPointType == FZoneShapePointType::Bezier;
@@ -561,7 +593,7 @@ namespace PCGExClusterToZoneGraph
 			// boundary is equivalent to trimming the S→B1 segment at the polygon boundary, so
 			// we keep the existing snap behavior here.
 			//
-			// End side: PrecomputedPoints.Last() is at Bn — an actual chain node, not the
+			// End side: PrecomputedPoints.Last() is at Bn -- an actual chain node, not the
 			// polygon center. Overwriting Bn with a position near S would skip Bn (and nearby
 			// nodes) from the spline whenever the loop is geometrically larger than the polygon
 			// radius. Instead, append a new crossing point on the implicit Bn→S wrap edge.
@@ -785,31 +817,72 @@ namespace PCGExClusterToZoneGraph
 		}
 		CachedLaneProfile = S->RoadSettings.LaneProfile;
 
-		// Compute per-road radii based on auto-radius mode
+		// Compute per-road radii: pick a per-road auto value from the source, then combine with manual radius via the policy.
 		CachedRoadRadii.SetNum(Roads.Num());
+
+		const EPCGExZGAutoRadiusMode Mode = S->PolygonSettings.AutoRadiusMode;
+		const EPCGExZGRadiusOverridePolicy Policy = S->PolygonSettings.AutoRadiusPolicy;
+
+		// Aggregate pre-pass: max-over-all-roads metrics, computed once for Max* modes.
+		double AggregateMaxLane = 0.0;
+		double AggregateMaxHalfProfile = 0.0;
+		if (Mode == EPCGExZGAutoRadiusMode::MaxWidestLane || Mode == EPCGExZGAutoRadiusMode::MaxHalfProfile)
+		{
+			for (const TSharedPtr<FZGRoad>& Road : Roads)
+			{
+				AggregateMaxLane = FMath::Max(AggregateMaxLane, Road->CachedMaxLaneWidth);
+				AggregateMaxHalfProfile = FMath::Max(AggregateMaxHalfProfile, Road->CachedTotalProfileWidth * 0.5);
+			}
+		}
+
 		for (int32 i = 0; i < Roads.Num(); i++)
 		{
 			double Radius = CachedRadius;
 
-			if (S->PolygonSettings.AutoRadiusMode != EPCGExZGAutoRadiusMode::Disabled)
+			if (Mode != EPCGExZGAutoRadiusMode::Disabled)
 			{
-				const double MaxLane = Roads[i]->CachedMaxLaneWidth;
-				const double HalfProfile = Roads[i]->CachedTotalProfileWidth * 0.5;
-
-				switch (S->PolygonSettings.AutoRadiusMode)
+				// 1) Resolve auto value from the selected source.
+				double AutoR = 0.0;
+				switch (Mode)
 				{
 				case EPCGExZGAutoRadiusMode::WidestLane:
-					Radius = MaxLane;
+					AutoR = Roads[i]->CachedMaxLaneWidth;
 					break;
 				case EPCGExZGAutoRadiusMode::HalfProfile:
-					Radius = HalfProfile;
+					AutoR = Roads[i]->CachedTotalProfileWidth * 0.5;
+					break;
+				case EPCGExZGAutoRadiusMode::MaxWidestLane:
+					AutoR = AggregateMaxLane;
+					break;
+				case EPCGExZGAutoRadiusMode::MaxHalfProfile:
+					AutoR = AggregateMaxHalfProfile;
+					break;
+				case EPCGExZGAutoRadiusMode::ConvexFit:
+					// Phase 2: replace with neighbor-derived per-road radius. Falls back to per-road half-profile until then.
+					AutoR = Roads[i]->CachedTotalProfileWidth * 0.5;
 					break;
 				case EPCGExZGAutoRadiusMode::WidestLaneMin:
-					Radius = FMath::Max(Radius, MaxLane);
-					break;
+					// Legacy slot -- should be migrated by ApplyDeprecation. Defensive: behave as (WidestLane, Min).
+					AutoR = Roads[i]->CachedMaxLaneWidth;
+					Radius = FMath::Max(Radius, AutoR);
+					CachedRoadRadii[i] = Radius;
+					continue;
 				case EPCGExZGAutoRadiusMode::HalfProfileMin:
-					Radius = FMath::Max(Radius, HalfProfile);
-					break;
+					// Legacy slot -- should be migrated by ApplyDeprecation. Defensive: behave as (HalfProfile, Min).
+					AutoR = Roads[i]->CachedTotalProfileWidth * 0.5;
+					Radius = FMath::Max(Radius, AutoR);
+					CachedRoadRadii[i] = Radius;
+					continue;
+				default: break;
+				}
+
+				// 2) Combine auto value with manual/attribute radius via policy.
+				switch (Policy)
+				{
+				case EPCGExZGRadiusOverridePolicy::Replace: Radius = AutoR; break;
+				case EPCGExZGRadiusOverridePolicy::Min:     Radius = FMath::Max(CachedRadius, AutoR); break;
+				case EPCGExZGRadiusOverridePolicy::Max:     Radius = FMath::Min(CachedRadius, AutoR); break;
+				case EPCGExZGRadiusOverridePolicy::Offset:  Radius = AutoR + CachedRadius; break;
 				default: break;
 				}
 			}
@@ -1187,7 +1260,7 @@ namespace PCGExClusterToZoneGraph
 			if (Chain->bIsClosedLoop)
 			{
 				// Non-roaming closed loop: wraps back to seed node. The binary "end" node is
-				// the last step before returning — not a real junction. Connect both road ends
+				// the last step before returning -- not a real junction. Connect both road ends
 				// to the seed polygon only.
 				const int32 SeedNode = Chain->Seed.Node;
 				TSharedPtr<FZGPolygon>* PolygonPtr = Map.Find(SeedNode);
