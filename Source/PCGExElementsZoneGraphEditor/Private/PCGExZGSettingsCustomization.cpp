@@ -5,9 +5,11 @@
 
 #include "DetailWidgetRow.h"
 #include "IDetailChildrenBuilder.h"
+#include "Graph/PCGExClusterToZoneGraph.h"
 #include "Widgets/Text/STextBlock.h"
 #include "Widgets/Layout/SSeparator.h"
 #include "Widgets/Layout/SBox.h"
+#include "Widgets/SBoxPanel.h"
 
 #define LOCTEXT_NAMESPACE "PCGExZGSettingsCustomization"
 
@@ -58,6 +60,37 @@ void FPCGExZGSettingsCustomization::CustomizeChildren(
 
 		ChildBuilder.AddProperty(ChildHandle.ToSharedRef());
 	}
+}
+
+void FPCGExZGConvexFitSettingsCustomization::CustomizeHeader(
+	TSharedRef<IPropertyHandle> PropertyHandle,
+	FDetailWidgetRow& HeaderRow,
+	IPropertyTypeCustomizationUtils& CustomizationUtils)
+{
+	const TSharedPtr<IPropertyHandle> ClampHandle = PropertyHandle->GetChildHandle(GET_MEMBER_NAME_CHECKED(FPCGExZGConvexFitSettings, Clamp));
+	const TSharedPtr<IPropertyHandle> FallbackHandle = PropertyHandle->GetChildHandle(GET_MEMBER_NAME_CHECKED(FPCGExZGConvexFitSettings, Fallback));
+
+	HeaderRow
+	.NameContent()
+	[
+		PropertyHandle->CreatePropertyNameWidget()
+	]
+	.ValueContent()
+	.MinDesiredWidth(250.f)
+	[
+		SNew(SHorizontalBox)
+		+ SHorizontalBox::Slot()
+		.FillWidth(0.4f)
+		.Padding(0, 0, 4, 0)
+		[
+			ClampHandle.IsValid() ? ClampHandle->CreatePropertyValueWidget() : SNullWidget::NullWidget
+		]
+		+ SHorizontalBox::Slot()
+		.FillWidth(0.6f)
+		[
+			FallbackHandle.IsValid() ? FallbackHandle->CreatePropertyValueWidget() : SNullWidget::NullWidget
+		]
+	];
 }
 
 #undef LOCTEXT_NAMESPACE
