@@ -17,6 +17,7 @@ void FPCGExElementsZoneGraphEditorModule::StartupModule()
 
 	PCGEX_REGISTER_CUSTO("PCGExZGPolygonSettings", FPCGExZGSettingsCustomization)
 	PCGEX_REGISTER_CUSTO("PCGExZGRoadSettings", FPCGExZGSettingsCustomization)
+	PCGEX_REGISTER_CUSTO("PCGExZGConvexFitSettings", FPCGExZGConvexFitSettingsCustomization)
 
 	// ZoneGraph property types use the same compiled customization as core properties
 	PropertyModule.RegisterCustomPropertyTypeLayout(

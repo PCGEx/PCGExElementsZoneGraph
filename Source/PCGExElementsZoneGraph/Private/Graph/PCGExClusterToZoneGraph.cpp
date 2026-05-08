@@ -35,7 +35,39 @@ namespace PCGExClusterToZoneGraph
 PCGExData::EIOInit UPCGExClusterToZoneGraphSettings::GetEdgeOutputInitMode() const { return PCGExData::EIOInit::Forward; }
 PCGExData::EIOInit UPCGExClusterToZoneGraphSettings::GetMainOutputInitMode() const { return PCGExData::EIOInit::Forward; }
 
+UPCGExClusterToZoneGraphSettings::UPCGExClusterToZoneGraphSettings()
+{
+	if (const UZoneGraphSettings* ZoneGraphSettings = GetDefault<UZoneGraphSettings>())
+	{
+		const TArray<FZoneLaneProfile>& Profiles = ZoneGraphSettings->GetLaneProfiles();
+		if (!Profiles.IsEmpty())
+		{
+			RoadSettings.LaneProfile = Profiles[0];
+		}
+	}
+}
+
 #if WITH_EDITOR
+void UPCGExClusterToZoneGraphSettings::ApplyDeprecation(UPCGNode* InOutNode)
+{
+	PCGEX_IF_VERSION_LOWER(1,75,14)
+	{
+		// Legacy *Min auto-radius modes are now (source, Min) tuples.
+		if (PolygonSettings.AutoRadiusMode == EPCGExZGAutoRadiusMode::WidestLaneMin)
+		{
+			PolygonSettings.AutoRadiusMode = EPCGExZGAutoRadiusMode::WidestLane;
+			PolygonSettings.AutoRadiusPolicy = EPCGExZGRadiusOverridePolicy::Min;
+		}
+		else if (PolygonSettings.AutoRadiusMode == EPCGExZGAutoRadiusMode::HalfProfileMin)
+		{
+			PolygonSettings.AutoRadiusMode = EPCGExZGAutoRadiusMode::HalfProfile;
+			PolygonSettings.AutoRadiusPolicy = EPCGExZGRadiusOverridePolicy::Min;
+		}
+	}
+	
+	Super::ApplyDeprecation(InOutNode);
+}
+
 void UPCGExClusterToZoneGraphSettings::PostEditChangeProperty(struct FPropertyChangedEvent& PropertyChangedEvent)
 {
 	RoadSettings.bCachedSupportsCustomLength = RoadSettings.bOverrideRoadPointType || RoadSettings.RoadPointType == FZoneShapePointType::Bezier;
@@ -561,7 +593,7 @@ namespace PCGExClusterToZoneGraph
 			// boundary is equivalent to trimming the S→B1 segment at the polygon boundary, so
 			// we keep the existing snap behavior here.
 			//
-			// End side: PrecomputedPoints.Last() is at Bn — an actual chain node, not the
+			// End side: PrecomputedPoints.Last() is at Bn -- an actual chain node, not the
 			// polygon center. Overwriting Bn with a position near S would skip Bn (and nearby
 			// nodes) from the spline whenever the loop is geometrically larger than the polygon
 			// radius. Instead, append a new crossing point on the implicit Bn→S wrap edge.
@@ -785,32 +817,81 @@ namespace PCGExClusterToZoneGraph
 		}
 		CachedLaneProfile = S->RoadSettings.LaneProfile;
 
-		// Compute per-road radii based on auto-radius mode
-		CachedRoadRadii.SetNum(Roads.Num());
-		for (int32 i = 0; i < Roads.Num(); i++)
+		const int32 NumRoads = Roads.Num();
+
+		// Pre-pass: outward road directions, half-widths, and polygon-wide aggregates — all in one sweep.
+		// RoadDirections is reused by the sort lambda and connection-point placement loop;
+		// HalfWidths feeds CachedPointHalfWidths and ConvexFit; aggregates feed the Max* modes.
+		TArray<FVector, TInlineAllocator<8>> RoadDirections;
+		TArray<double, TInlineAllocator<8>> HalfWidths;
+		RoadDirections.SetNumUninitialized(NumRoads);
+		HalfWidths.SetNumUninitialized(NumRoads);
+
+		double AggregateMaxLane = 0.0;
+		double AggregateMaxHalfProfile = 0.0;
+		double AggregateMinHalfProfile = TNumericLimits<double>::Max();
+
+		for (int32 i = 0; i < NumRoads; i++)
+		{
+			const TSharedPtr<FZGRoad>& Road = Roads[i];
+			const bool bExitSide = (FromStart[i] != Road->bIsReversed);
+			RoadDirections[i] = Road->Chain->GetOutwardDirAt(Cluster, NodeIndex, bExitSide);
+
+			const double Hw = Road->CachedTotalProfileWidth * 0.5;
+			HalfWidths[i] = Hw;
+			AggregateMinHalfProfile = FMath::Min(AggregateMinHalfProfile, Hw);
+			AggregateMaxHalfProfile = FMath::Max(AggregateMaxHalfProfile, Hw);
+			AggregateMaxLane = FMath::Max(AggregateMaxLane, Road->CachedMaxLaneWidth);
+		}
+
+		CachedRoadRadii.SetNum(NumRoads);
+
+		const EPCGExZGAutoRadiusMode Mode = S->PolygonSettings.AutoRadiusMode;
+		const EPCGExZGRadiusOverridePolicy Policy = S->PolygonSettings.AutoRadiusPolicy;
+
+		TArray<double> ConvexFitRadii;
+		if (Mode == EPCGExZGAutoRadiusMode::ConvexFit)
+		{
+			ComputeConvexFitRadii(RoadDirections, HalfWidths, AggregateMinHalfProfile, AggregateMaxHalfProfile, ConvexFitRadii);
+		}
+
+		for (int32 i = 0; i < NumRoads; i++)
 		{
 			double Radius = CachedRadius;
 
-			if (S->PolygonSettings.AutoRadiusMode != EPCGExZGAutoRadiusMode::Disabled)
+			if (Mode != EPCGExZGAutoRadiusMode::Disabled)
 			{
-				const double MaxLane = Roads[i]->CachedMaxLaneWidth;
-				const double HalfProfile = Roads[i]->CachedTotalProfileWidth * 0.5;
-
-				switch (S->PolygonSettings.AutoRadiusMode)
+				double AutoR = 0.0;
+				switch (Mode)
 				{
+				case EPCGExZGAutoRadiusMode::Disabled:
+					break;
 				case EPCGExZGAutoRadiusMode::WidestLane:
-					Radius = MaxLane;
+					AutoR = Roads[i]->CachedMaxLaneWidth;
 					break;
 				case EPCGExZGAutoRadiusMode::HalfProfile:
-					Radius = HalfProfile;
+					AutoR = HalfWidths[i];
+					break;
+				case EPCGExZGAutoRadiusMode::MaxWidestLane:
+					AutoR = AggregateMaxLane;
+					break;
+				case EPCGExZGAutoRadiusMode::MaxHalfProfile:
+					AutoR = AggregateMaxHalfProfile;
+					break;
+				case EPCGExZGAutoRadiusMode::ConvexFit:
+					AutoR = ConvexFitRadii[i];
 					break;
 				case EPCGExZGAutoRadiusMode::WidestLaneMin:
-					Radius = FMath::Max(Radius, MaxLane);
-					break;
 				case EPCGExZGAutoRadiusMode::HalfProfileMin:
-					Radius = FMath::Max(Radius, HalfProfile);
-					break;
-				default: break;
+					break; // Migrated by ApplyDeprecation; never reached at runtime.
+				}
+
+				switch (Policy)
+				{
+				case EPCGExZGRadiusOverridePolicy::Replace: Radius = AutoR; break;
+				case EPCGExZGRadiusOverridePolicy::Min:     Radius = FMath::Max(CachedRadius, AutoR); break;
+				case EPCGExZGRadiusOverridePolicy::Max:     Radius = FMath::Min(CachedRadius, AutoR); break;
+				case EPCGExZGRadiusOverridePolicy::Offset:  Radius = AutoR + CachedRadius; break;
 				}
 			}
 
@@ -822,37 +903,7 @@ namespace PCGExClusterToZoneGraph
 		Order.Sort(
 			[&](const int32 A, const int32 B)
 			{
-				const bool bSeedA = (NodeIndex == Roads[A]->Chain->Seed.Node);
-				const bool bEndA = (NodeIndex == Roads[A]->Chain->Links.Last().Node);
-				FVector DirA;
-				if (Roads[A]->Chain->bIsClosedLoop && bSeedA && !Roads[A]->Chain->Links.IsEmpty())
-				{
-					const bool bExitA = (FromStart[A] != Roads[A]->bIsReversed);
-					DirA = bExitA
-						? Cluster->GetDir(Roads[A]->Chain->Seed.Node, Roads[A]->Chain->Links[0].Node)
-						: Cluster->GetDir(Roads[A]->Chain->Seed.Node, Roads[A]->Chain->Links.Last().Node);
-				}
-				else
-				{
-					DirA = Roads[A]->Chain->GetEdgeDir(Cluster, (bSeedA && bEndA) ? FromStart[A] : bSeedA);
-				}
-
-				const bool bSeedB = (NodeIndex == Roads[B]->Chain->Seed.Node);
-				const bool bEndB = (NodeIndex == Roads[B]->Chain->Links.Last().Node);
-				FVector DirB;
-				if (Roads[B]->Chain->bIsClosedLoop && bSeedB && !Roads[B]->Chain->Links.IsEmpty())
-				{
-					const bool bExitB = (FromStart[B] != Roads[B]->bIsReversed);
-					DirB = bExitB
-						? Cluster->GetDir(Roads[B]->Chain->Seed.Node, Roads[B]->Chain->Links[0].Node)
-						: Cluster->GetDir(Roads[B]->Chain->Seed.Node, Roads[B]->Chain->Links.Last().Node);
-				}
-				else
-				{
-					DirB = Roads[B]->Chain->GetEdgeDir(Cluster, (bSeedB && bEndB) ? FromStart[B] : bSeedB);
-				}
-
-				return PCGExMath::GetRadiansBetweenVectors(DirA, FVector::ForwardVector) > PCGExMath::GetRadiansBetweenVectors(DirB, FVector::ForwardVector);
+				return PCGExMath::GetRadiansBetweenVectors(RoadDirections[A], FVector::ForwardVector) > PCGExMath::GetRadiansBetweenVectors(RoadDirections[B], FVector::ForwardVector);
 			});
 
 		PCGExArrayHelpers::InitArray(PrecomputedPoints, Order.Num());
@@ -863,25 +914,7 @@ namespace PCGExClusterToZoneGraph
 		{
 			const int32 Ri = Order[i];
 			const TSharedPtr<FZGRoad>& Road = Roads[Ri];
-			const bool bAtChainSeed = (NodeIndex == Road->Chain->Seed.Node);
-			const bool bAtChainEnd = (NodeIndex == Road->Chain->Links.Last().Node);
-
-			// For lollipop chains (single breakpoint on closed loop), seed==end node.
-			// Use FromStart to disambiguate: start connection → first edge dir, end connection → last edge dir.
-			// For self-connecting closed loops at seed polygon: Seed.Edge is overwritten to closing edge,
-			// so GetFirstEdgeDir gives wrong direction. Use Links[0].Node for exit, Links.Last() for entry.
-			FVector RoadDirection;
-			if (Road->Chain->bIsClosedLoop && bAtChainSeed && !Road->Chain->Links.IsEmpty())
-			{
-				const bool bIsExitSide = (FromStart[Ri] != Road->bIsReversed);
-				RoadDirection = bIsExitSide
-					? Cluster->GetDir(Road->Chain->Seed.Node, Road->Chain->Links[0].Node)
-					: Cluster->GetDir(Road->Chain->Seed.Node, Road->Chain->Links.Last().Node);
-			}
-			else
-			{
-				RoadDirection = Road->Chain->GetEdgeDir(Cluster, (bAtChainSeed && bAtChainEnd) ? FromStart[Ri] : bAtChainSeed);
-			}
+			const FVector& RoadDirection = RoadDirections[Ri];
 
 			// Store polygon boundary data on the road for precise intersection
 			FZGRoad::FPolygonEndpoint EP;
@@ -905,7 +938,49 @@ namespace PCGExClusterToZoneGraph
 
 			PrecomputedPoints[i] = ShapePoint;
 			CachedPointLaneProfiles[i] = Road->CachedLaneProfile;
-			CachedPointHalfWidths[i] = Road->CachedTotalProfileWidth * 0.5;
+			CachedPointHalfWidths[i] = HalfWidths[Ri];
+		}
+	}
+
+	void FZGPolygon::ComputeConvexFitRadii(
+		TArrayView<const FVector> InRoadDirections,
+		TArrayView<const double> InHalfWidths,
+		double InMinHalfProfile,
+		double InMaxHalfProfile,
+		TArray<double>& OutRadii) const
+	{
+		// r_i = max_j (hw_j / |sin(angle_ij)|): distance along d_i where each neighbor j's strip edge
+		// crosses d_i's centerline. hw_i (perpendicular to d_i) does not constrain r_i — when no
+		// neighbor constrains (collinear / dead-end), fall back to ConvexFitFallback to guarantee non-zero size.
+		const int32 N = InRoadDirections.Num();
+		OutRadii.SetNumUninitialized(N);
+
+		const FPCGExZGConvexFitSettings& CFS = Processor->GetSettings()->PolygonSettings.ConvexFitSettings;
+		constexpr double SinEpsilon = 1e-3;
+
+		const double HardCap = (InMaxHalfProfile > 0.0) ? CFS.Clamp * InMaxHalfProfile : 0.0;
+		const double FallbackValue = (CFS.Fallback == EPCGExZGConvexFitFallback::Smallest) ? InMinHalfProfile : InMaxHalfProfile;
+
+		for (int32 i = 0; i < N; i++)
+		{
+			double Ri = 0.0;
+			bool bAnyConstraint = false;
+
+			const FVector& Di = InRoadDirections[i];
+			for (int32 j = 0; j < N; j++)
+			{
+				if (j == i) { continue; }
+
+				const double SinTheta = FVector::CrossProduct(Di, InRoadDirections[j]).Size();
+				if (SinTheta < SinEpsilon) { continue; }
+
+				Ri = FMath::Max(Ri, InHalfWidths[j] / SinTheta);
+				bAnyConstraint = true;
+			}
+
+			if (!bAnyConstraint) { Ri = FallbackValue; }
+			if (HardCap > 0.0) { Ri = FMath::Min(Ri, HardCap); }
+			OutRadii[i] = Ri;
 		}
 	}
 
@@ -1187,7 +1262,7 @@ namespace PCGExClusterToZoneGraph
 			if (Chain->bIsClosedLoop)
 			{
 				// Non-roaming closed loop: wraps back to seed node. The binary "end" node is
-				// the last step before returning — not a real junction. Connect both road ends
+				// the last step before returning -- not a real junction. Connect both road ends
 				// to the seed polygon only.
 				const int32 SeedNode = Chain->Seed.Node;
 				TSharedPtr<FZGPolygon>* PolygonPtr = Map.Find(SeedNode);
