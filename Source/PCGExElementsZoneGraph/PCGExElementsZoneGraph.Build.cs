@@ -35,7 +35,7 @@ public class PCGExElementsZoneGraph : ModuleRules
 				"PCGExFoundations",
 				"PCGExGraphs",
 				"PCGExProperties",
-				"ZoneGraph",
+				"ZoneGraph", "PCGExtendedToolkit",
 			}
 		);
 

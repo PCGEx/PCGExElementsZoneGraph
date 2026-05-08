@@ -55,6 +55,27 @@ enum class EPCGExZGRadiusOverridePolicy : uint8
 };
 
 UENUM(BlueprintType)
+enum class EPCGExZGConvexFitFallback : uint8
+{
+	Smallest = 0 UMETA(DisplayName="Smallest Profile", Tooltip="When no neighbor constrains a road's radius (e.g. dead-end, or chain-split with anti-parallel roads), fall back to the smallest profile half-width across all roads at the polygon. Guarantees a minimal non-zero polygon size."),
+	Largest  = 1 UMETA(DisplayName="Largest Profile",  Tooltip="When no neighbor constrains a road's radius, fall back to the largest profile half-width across all roads at the polygon. Produces a more generous polygon for transitions."),
+};
+
+USTRUCT(BlueprintType)
+struct PCGEXELEMENTSZONEGRAPH_API FPCGExZGConvexFitSettings
+{
+	GENERATED_BODY()
+
+	/** Cap for Convex Fit radii at acute-angle clusters. Per-road radius is clamped to this multiple of the largest profile half-width at the polygon. */
+	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = Settings, meta=(ClampMin="1.0", UIMin="1.0"))
+	double Clamp = 4.0;
+
+	/** Fallback used by Convex Fit when no neighboring road constrains a road's radius (collinear / chain-split topologies). Computed before the override policy is applied. */
+	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = Settings)
+	EPCGExZGConvexFitFallback Fallback = EPCGExZGConvexFitFallback::Smallest;
+};
+
+UENUM(BlueprintType)
 enum class EPCGExZGTangentLengthMode : uint8
 {
 	Default    = 0 UMETA(DisplayName="Default", Tooltip="Don't set tangent length -- ZoneGraph handles it."),
@@ -102,6 +123,10 @@ struct PCGEXELEMENTSZONEGRAPH_API FPCGExZGPolygonSettings
 	/** How the auto-computed value combines with the manual / attribute polygon radius. */
 	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = Settings, meta=(EditCondition="AutoRadiusMode != EPCGExZGAutoRadiusMode::Disabled", EditConditionHides))
 	EPCGExZGRadiusOverridePolicy AutoRadiusPolicy = EPCGExZGRadiusOverridePolicy::Replace;
+
+	/** Convex Fit refinement parameters (acute-angle clamp and fallback for unconstrained roads). */
+	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = Settings, meta=(EditCondition="AutoRadiusMode == EPCGExZGAutoRadiusMode::ConvexFit", EditConditionHides, DisplayName="Convex Fit"))
+	FPCGExZGConvexFitSettings ConvexFitSettings;
 
 	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = Settings, meta=(CategorySeparator="Routing"))
 	EZoneShapePolygonRoutingType PolygonRoutingType = EZoneShapePolygonRoutingType::Arcs;
@@ -452,6 +477,14 @@ namespace PCGExClusterToZoneGraph
 		void SyncRadiusToRoads();
 		void BuildPathOutput(const TSharedPtr<PCGExData::FPointIO>& InPathIO) const;
 		void Compile();
+
+	protected:
+		void ComputeConvexFitRadii(
+			TArrayView<const FVector> InRoadDirections,
+			TArrayView<const double> InHalfWidths,
+			double InMinHalfProfile,
+			double InMaxHalfProfile,
+			TArray<double>& OutRadii) const;
 	};
 
 	class FProcessor final : public PCGExClusterMT::TProcessor<FPCGExClusterToZoneGraphContext, UPCGExClusterToZoneGraphSettings>
