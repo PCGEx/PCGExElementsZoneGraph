@@ -97,7 +97,7 @@ struct PCGEXELEMENTSZONEGRAPH_API FPCGExZGConnectionRestrictionFlags
 {
 	GENERATED_BODY()
 
-	UPROPERTY(BlueprintReadWrite, EditAnywhere, meta=(Bitmask, BitmaskEnum="/Script/ZoneGraph.EZoneShapeLaneConnectionRestrictions"))
+	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = Settings, meta=(Bitmask, BitmaskEnum="/Script/ZoneGraph.EZoneShapeLaneConnectionRestrictions"))
 	int32 Flags = 0;
 };
 
