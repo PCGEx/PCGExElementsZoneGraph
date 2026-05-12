@@ -41,5 +41,7 @@ public:
 	virtual void CustomizeChildren(
 		TSharedRef<IPropertyHandle> PropertyHandle,
 		IDetailChildrenBuilder& ChildBuilder,
-		IPropertyTypeCustomizationUtils& CustomizationUtils) override {}
+		IPropertyTypeCustomizationUtils& CustomizationUtils) override
+	{
+	}
 };

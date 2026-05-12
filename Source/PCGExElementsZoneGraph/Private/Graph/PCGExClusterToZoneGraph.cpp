@@ -4,24 +4,24 @@
 #include "Graph/PCGExClusterToZoneGraph.h"
 
 #include "PCGComponent.h"
+#include "PCGExCoreMacros.h"
 #include "PCGExSubSystem.h"
-#include "ZoneShapeComponent.h"
 #include "ZoneGraphSubsystem.h"
-#include "Core/PCGExPointFilter.h"
+#include "ZoneShapeComponent.h"
 #include "Clusters/PCGExCluster.h"
-#include "Clusters/Artifacts/PCGExChain.h"
 #include "Clusters/Artifacts/PCGExCachedChain.h"
+#include "Clusters/Artifacts/PCGExChain.h"
 #include "Containers/PCGExManagedObjects.h"
 #include "Core/PCGExMT.h"
+#include "Core/PCGExPointFilter.h"
 #include "Data/PCGExData.h"
 #include "Data/PCGExPointIO.h"
 #include "Data/Utils/PCGExDataPreloader.h"
 #include "Details/PCGExSettingsDetails.h"
-#include "Helpers/PCGExStreamingHelpers.h"
 #include "Helpers/PCGExArrayHelpers.h"
 #include "Helpers/PCGExPointArrayDataHelpers.h"
+#include "Helpers/PCGExStreamingHelpers.h"
 #include "Paths/PCGExPathsHelpers.h"
-#include "PCGExCoreMacros.h"
 
 #define LOCTEXT_NAMESPACE "PCGExClusterToZoneGraph"
 #define PCGEX_NAMESPACE ClusterToZoneGraph
@@ -32,8 +32,15 @@ namespace PCGExClusterToZoneGraph
 	const FName OutputRoadPathsLabel = TEXT("Road Paths");
 }
 
-PCGExData::EIOInit UPCGExClusterToZoneGraphSettings::GetEdgeOutputInitMode() const { return PCGExData::EIOInit::Forward; }
-PCGExData::EIOInit UPCGExClusterToZoneGraphSettings::GetMainOutputInitMode() const { return PCGExData::EIOInit::Forward; }
+PCGExData::EIOInit UPCGExClusterToZoneGraphSettings::GetEdgeOutputInitMode() const
+{
+	return PCGExData::EIOInit::Forward;
+}
+
+PCGExData::EIOInit UPCGExClusterToZoneGraphSettings::GetMainOutputInitMode() const
+{
+	return PCGExData::EIOInit::Forward;
+}
 
 UPCGExClusterToZoneGraphSettings::UPCGExClusterToZoneGraphSettings()
 {
@@ -50,7 +57,7 @@ UPCGExClusterToZoneGraphSettings::UPCGExClusterToZoneGraphSettings()
 #if WITH_EDITOR
 void UPCGExClusterToZoneGraphSettings::ApplyDeprecation(UPCGNode* InOutNode)
 {
-	PCGEX_IF_VERSION_LOWER(1,75,14)
+	PCGEX_IF_VERSION_LOWER(1, 75, 14)
 	{
 		// Legacy *Min auto-radius modes are now (source, Min) tuples.
 		if (PolygonSettings.AutoRadiusMode == EPCGExZGAutoRadiusMode::WidestLaneMin)
@@ -64,7 +71,7 @@ void UPCGExClusterToZoneGraphSettings::ApplyDeprecation(UPCGNode* InOutNode)
 			PolygonSettings.AutoRadiusPolicy = EPCGExZGRadiusOverridePolicy::Min;
 		}
 	}
-	
+
 	Super::ApplyDeprecation(InOutNode);
 }
 
@@ -78,10 +85,16 @@ void UPCGExClusterToZoneGraphSettings::PostEditChangeProperty(struct FPropertyCh
 TArray<FPCGPinProperties> UPCGExClusterToZoneGraphSettings::InputPinProperties() const
 {
 	TArray<FPCGPinProperties> PinProperties = Super::InputPinProperties();
-	
-	if (bEnableFlipFilters) { PCGEX_PIN_FILTERS(PCGExZoneGraph::Labels::SourceEdgeFlipFiltersLabel, "Road direction flip filters.", Normal) }
-	else { PCGEX_PIN_FILTERS(PCGExZoneGraph::Labels::SourceEdgeFlipFiltersLabel, "Road direction flip filters.", Advanced) }
-	
+
+	if (bEnableFlipFilters)
+	{
+		PCGEX_PIN_FILTERS(PCGExZoneGraph::Labels::SourceEdgeFlipFiltersLabel, "Road direction flip filters.", Normal)
+	}
+	else
+	{
+		PCGEX_PIN_FILTERS(PCGExZoneGraph::Labels::SourceEdgeFlipFiltersLabel, "Road direction flip filters.", Advanced)
+	}
+
 	return PinProperties;
 }
 
@@ -89,11 +102,23 @@ TArray<FPCGPinProperties> UPCGExClusterToZoneGraphSettings::OutputPinProperties(
 {
 	TArray<FPCGPinProperties> PinProperties = Super::OutputPinProperties();
 
-	if (bOutputPolygonPaths) { PCGEX_PIN_POINTS(PCGExClusterToZoneGraph::OutputPolygonPathsLabel, "Polygon shapes as closed paths", Normal) }
-	else { PCGEX_PIN_POINTS(PCGExClusterToZoneGraph::OutputPolygonPathsLabel, "Polygon shapes as closed paths", Advanced) }
+	if (bOutputPolygonPaths)
+	{
+		PCGEX_PIN_POINTS(PCGExClusterToZoneGraph::OutputPolygonPathsLabel, "Polygon shapes as closed paths", Normal)
+	}
+	else
+	{
+		PCGEX_PIN_POINTS(PCGExClusterToZoneGraph::OutputPolygonPathsLabel, "Polygon shapes as closed paths", Advanced)
+	}
 
-	if (bOutputRoadPaths) { PCGEX_PIN_POINTS(PCGExClusterToZoneGraph::OutputRoadPathsLabel, "Road splines as paths with tangent attributes", Normal) }
-	else { PCGEX_PIN_POINTS(PCGExClusterToZoneGraph::OutputRoadPathsLabel, "Road splines as paths with tangent attributes", Advanced) }
+	if (bOutputRoadPaths)
+	{
+		PCGEX_PIN_POINTS(PCGExClusterToZoneGraph::OutputRoadPathsLabel, "Road splines as paths with tangent attributes", Normal)
+	}
+	else
+	{
+		PCGEX_PIN_POINTS(PCGExClusterToZoneGraph::OutputRoadPathsLabel, "Road splines as paths with tangent attributes", Advanced)
+	}
 
 	return PinProperties;
 }
@@ -106,13 +131,16 @@ bool FPCGExClusterToZoneGraphElement::Boot(FPCGExContext* InContext) const
 {
 	PCGEX_CONTEXT_AND_SETTINGS(ClusterToZoneGraph)
 
-	if (!FPCGExClustersProcessorElement::Boot(InContext)) { return false; }
+	if (!FPCGExClustersProcessorElement::Boot(InContext))
+	{
+		return false;
+	}
 
 	if (Settings->bEnableFlipFilters)
 	{
 		GetInputFactories(Context, PCGExZoneGraph::Labels::SourceEdgeFlipFiltersLabel, Context->FlipEdgeFilterFactories, PCGExFactories::ClusterEdgeFilters, false);
 	}
-	
+
 	if (const UPCGComponent* PCGComponent = InContext->GetComponent())
 	{
 		/*
@@ -159,7 +187,10 @@ bool FPCGExClusterToZoneGraphElement::AdvanceWork(FPCGExContext* InContext, cons
 	PCGEX_ON_INITIAL_EXECUTION
 	{
 		if (!Context->StartProcessingClusters(
-			[](const TSharedPtr<PCGExData::FPointIOTaggedEntries>& Entries) { return true; },
+			[](const TSharedPtr<PCGExData::FPointIOTaggedEntries>& Entries)
+			{
+				return true;
+			},
 			[&](const TSharedPtr<PCGExClusterMT::IBatch>& NewBatch)
 			{
 				//NewBatch->bRequiresWriteStep = true;
@@ -176,19 +207,31 @@ bool FPCGExClusterToZoneGraphElement::AdvanceWork(FPCGExContext* InContext, cons
 	Context->OutputPointsAndEdges();
 	Context->ExecuteOnNotifyActors(Settings->PostProcessFunctionNames);
 
-	if (Context->OutputPolygonPaths) { Context->OutputPolygonPaths->StageOutputs(); }
-	else { Context->OutputData.InactiveOutputPinBitmask |= (1ULL << 2); }
+	if (Context->OutputPolygonPaths)
+	{
+		Context->OutputPolygonPaths->StageOutputs();
+	}
+	else
+	{
+		Context->OutputData.InactiveOutputPinBitmask |= (1ULL << 2);
+	}
 
-	if (Context->OutputRoadPaths) { Context->OutputRoadPaths->StageOutputs(); }
-	else { Context->OutputData.InactiveOutputPinBitmask |= (1ULL << 3); }
+	if (Context->OutputRoadPaths)
+	{
+		Context->OutputRoadPaths->StageOutputs();
+	}
+	else
+	{
+		Context->OutputData.InactiveOutputPinBitmask |= (1ULL << 3);
+	}
 
 	return Context->TryComplete();
 }
 
 namespace PCGExClusterToZoneGraph
 {
-// Shared base for FZGRoad and FZGPolygon.
-// Owns the UZoneShapeComponent and handles main-thread component creation.
+	// Shared base for FZGRoad and FZGPolygon.
+	// Owns the UZoneShapeComponent and handles main-thread component creation.
 #pragma region FZGBase
 
 	FZGBase::FZGBase(FProcessor* InProcessor)
@@ -210,25 +253,28 @@ namespace PCGExClusterToZoneGraph
 		Component = Processor->GetContext()->ManagedObjects->New<UZoneShapeComponent>(InTargetActor, MakeUniqueObjectName(InTargetActor, UZoneShapeComponent::StaticClass(), FName(ComponentName)), ObjectFlags);
 
 		Component->ComponentTags.Reserve(Component->ComponentTags.Num() + Processor->GetContext()->ComponentTags.Num());
-		for (const FString& ComponentTag : Processor->GetContext()->ComponentTags) { Component->ComponentTags.Add(FName(ComponentTag)); }
+		for (const FString& ComponentTag : Processor->GetContext()->ComponentTags)
+		{
+			Component->ComponentTags.Add(FName(ComponentTag));
+		}
 	}
 
 #pragma endregion
 
-// Represents a single road spline, built from a chain of cluster edges between two polygon nodes (or a polygon and a leaf).
-//
-// Resolution pipeline (called in order by FProcessor::CompleteWork):
-//   1. ResolveLaneProfile        - Majority-vote lane profile FName across all chain edges
-//   2. ResolveReverseLaneProfile - Majority-vote edge flip filter results (bool) across all chain edges
-//   3. ResolvePolygonPointProperties - Read InnerTurnRadius, Roll, ConnectionRestrictions from first/last edge
-//   4. Precompute                - Build shape points, trim endpoints at polygon boundaries, compute tangents
-//   5. Compile                   - Push shape points to UZoneShapeComponent (main thread)
-//
-// Cached values (CachedInnerTurnRadiusStart/End, CachedRollStart/End, CachedConnectionRestrictionsStart/End)
-// are consumed by FZGPolygon::Precompute when building polygon connection points.
-// "Start" refers to the road's logical start endpoint, "End" to the logical end.
-// When bIsReversed is true, the cached Start/End values are swapped after resolution
-// so they always match the logical direction regardless of the chain's geometric ordering.
+	// Represents a single road spline, built from a chain of cluster edges between two polygon nodes (or a polygon and a leaf).
+	//
+	// Resolution pipeline (called in order by FProcessor::CompleteWork):
+	//   1. ResolveLaneProfile        - Majority-vote lane profile FName across all chain edges
+	//   2. ResolveReverseLaneProfile - Majority-vote edge flip filter results (bool) across all chain edges
+	//   3. ResolvePolygonPointProperties - Read InnerTurnRadius, Roll, ConnectionRestrictions from first/last edge
+	//   4. Precompute                - Build shape points, trim endpoints at polygon boundaries, compute tangents
+	//   5. Compile                   - Push shape points to UZoneShapeComponent (main thread)
+	//
+	// Cached values (CachedInnerTurnRadiusStart/End, CachedRollStart/End, CachedConnectionRestrictionsStart/End)
+	// are consumed by FZGPolygon::Precompute when building polygon connection points.
+	// "Start" refers to the road's logical start endpoint, "End" to the logical end.
+	// When bIsReversed is true, the cached Start/End values are swapped after resolution
+	// so they always match the logical direction regardless of the chain's geometric ordering.
 #pragma region FZGRoad
 
 	FZGRoad::FZGRoad(FProcessor* InProcessor, const TSharedPtr<PCGExClusters::FNodeChain>& InChain, const bool InReverse)
@@ -246,7 +292,10 @@ namespace PCGExClusterToZoneGraph
 			TMap<FName, int32> ProfileCounts;
 			for (const PCGExClusters::FLink& Link : Chain->Links)
 			{
-				if (Link.Edge < 0) { continue; }
+				if (Link.Edge < 0)
+				{
+					continue;
+				}
 				const PCGExClusters::FEdge* Edge = Cluster->GetEdge(Link);
 				ProfileCounts.FindOrAdd(Processor->EdgeLaneProfileBuffer->Read(Edge->PointIndex))++;
 			}
@@ -285,15 +334,24 @@ namespace PCGExClusterToZoneGraph
 
 	void FZGRoad::ResolveReverseLaneProfile(const TSharedPtr<PCGExClusters::FCluster>& Cluster)
 	{
-		if (Processor->EdgeFilterCache.IsEmpty()) { return; }
+		if (Processor->EdgeFilterCache.IsEmpty())
+		{
+			return;
+		}
 
 		// Majority vote across chain edges
 		int32 TrueCount = 0;
 		int32 TotalCount = 0;
 		for (const PCGExClusters::FLink& Link : Chain->Links)
 		{
-			if (Link.Edge < 0) { continue; }
-			if (Processor->EdgeFilterCache[Link.Edge]) { TrueCount++; }
+			if (Link.Edge < 0)
+			{
+				continue;
+			}
+			if (Processor->EdgeFilterCache[Link.Edge])
+			{
+				TrueCount++;
+			}
 			TotalCount++;
 		}
 
@@ -307,7 +365,10 @@ namespace PCGExClusterToZoneGraph
 
 		const PCGExClusters::FEdge* FirstEdge = Chain->Links.IsEmpty() ? nullptr : Cluster->GetEdge(Chain->Links[0]);
 		const PCGExClusters::FEdge* LastEdge = Chain->Links.IsEmpty() ? nullptr : Cluster->GetEdge(Chain->Links.Last());
-		if (!FirstEdge) { return; }
+		if (!FirstEdge)
+		{
+			return;
+		}
 
 		const int32 FirstEdgePI = FirstEdge->PointIndex;
 		const int32 LastEdgePI = LastEdge ? LastEdge->PointIndex : FirstEdgePI;
@@ -371,7 +432,10 @@ namespace PCGExClusterToZoneGraph
 		if (ChainSize == 2 && !Chain->bIsClosedLoop)
 		{
 			const int32 ExpectedFirst = bIsReversed ? Chain->Links.Last().Node : Chain->Seed.Node;
-			if (Nodes[0] != ExpectedFirst) { Swap(Nodes[0], Nodes[1]); }
+			if (Nodes[0] != ExpectedFirst)
+			{
+				Swap(Nodes[0], Nodes[1]);
+			}
 		}
 
 		PCGExArrayHelpers::InitArray(PrecomputedPoints, ChainSize);
@@ -405,7 +469,10 @@ namespace PCGExClusterToZoneGraph
 				const FVector DirPrev = (Position - Cluster->GetPos(Nodes[PrevIdx])).GetSafeNormal();
 				const FVector DirNext = (Cluster->GetPos(Nodes[i + 1]) - Position).GetSafeNormal();
 				Forward = (DirPrev + DirNext).GetSafeNormal();
-				if (Forward.IsNearlyZero()) { Forward = DirNext; }
+				if (Forward.IsNearlyZero())
+				{
+					Forward = DirNext;
+				}
 			}
 
 			FZoneShapePoint ShapePoint = FZoneShapePoint(Position);
@@ -460,7 +527,10 @@ namespace PCGExClusterToZoneGraph
 							// Snap to polygon connector position for exact alignment
 							const FVector SnapPos = StartEndpoint.PolygonCenter + StartEndpoint.Direction * StartEndpoint.Radius;
 							FVector CrossingDir = (PrecomputedPoints[0].Position - SnapPos).GetSafeNormal();
-							if (CrossingDir.IsNearlyZero()) { CrossingDir = StartEndpoint.Direction; }
+							if (CrossingDir.IsNearlyZero())
+							{
+								CrossingDir = StartEndpoint.Direction;
+							}
 
 							FZoneShapePoint CrossingPoint(SnapPos);
 							CrossingPoint.SetRotationFromForwardAndUp(CrossingDir, FVector::UpVector);
@@ -501,8 +571,14 @@ namespace PCGExClusterToZoneGraph
 				}
 				else
 				{
-					if (bIsReversed) { PrecomputedPoints[0].Position += PrecomputedPoints[0].Rotation.RotateVector(FVector::BackwardVector) * StartRadius; }
-					else { PrecomputedPoints[0].Position += PrecomputedPoints[0].Rotation.RotateVector(FVector::ForwardVector) * StartRadius; }
+					if (bIsReversed)
+					{
+						PrecomputedPoints[0].Position += PrecomputedPoints[0].Rotation.RotateVector(FVector::BackwardVector) * StartRadius;
+					}
+					else
+					{
+						PrecomputedPoints[0].Position += PrecomputedPoints[0].Rotation.RotateVector(FVector::ForwardVector) * StartRadius;
+					}
 				}
 			}
 
@@ -532,7 +608,10 @@ namespace PCGExClusterToZoneGraph
 							// Snap to polygon connector position for exact alignment
 							const FVector SnapPos = EndEndpoint.PolygonCenter + EndEndpoint.Direction * EndEndpoint.Radius;
 							FVector CrossingDir = (SnapPos - PrecomputedPoints.Last().Position).GetSafeNormal();
-							if (CrossingDir.IsNearlyZero()) { CrossingDir = -EndEndpoint.Direction; }
+							if (CrossingDir.IsNearlyZero())
+							{
+								CrossingDir = -EndEndpoint.Direction;
+							}
 
 							FZoneShapePoint CrossingPoint(SnapPos);
 							CrossingPoint.SetRotationFromForwardAndUp(CrossingDir, FVector::UpVector);
@@ -573,8 +652,14 @@ namespace PCGExClusterToZoneGraph
 				}
 				else
 				{
-					if (bIsReversed) { PrecomputedPoints.Last().Position += PrecomputedPoints.Last().Rotation.RotateVector(FVector::ForwardVector) * EndRadius; }
-					else { PrecomputedPoints.Last().Position += PrecomputedPoints.Last().Rotation.RotateVector(FVector::BackwardVector) * EndRadius; }
+					if (bIsReversed)
+					{
+						PrecomputedPoints.Last().Position += PrecomputedPoints.Last().Rotation.RotateVector(FVector::ForwardVector) * EndRadius;
+					}
+					else
+					{
+						PrecomputedPoints.Last().Position += PrecomputedPoints.Last().Rotation.RotateVector(FVector::BackwardVector) * EndRadius;
+					}
 				}
 			}
 
@@ -620,7 +705,10 @@ namespace PCGExClusterToZoneGraph
 
 				FZoneShapePoint WrapCrossing(SnapPos);
 				FVector CrossingDir = (SnapPos - PrecomputedPoints.Last().Position).GetSafeNormal();
-				if (CrossingDir.IsNearlyZero()) { CrossingDir = -EndEndpoint.Direction; }
+				if (CrossingDir.IsNearlyZero())
+				{
+					CrossingDir = -EndEndpoint.Direction;
+				}
 				WrapCrossing.SetRotationFromForwardAndUp(CrossingDir, FVector::UpVector);
 				WrapCrossing.Type = DefaultPointType;
 				WrapCrossing.TangentLength = PrecomputedPoints.Last().TangentLength;
@@ -637,7 +725,10 @@ namespace PCGExClusterToZoneGraph
 				}
 			}
 
-			if (PrecomputedPoints.Num() < 2) { bDegenerate = true; }
+			if (PrecomputedPoints.Num() < 2)
+			{
+				bDegenerate = true;
+			}
 		}
 
 		// --- Auto/CatmullRom tangent pass ---
@@ -756,21 +847,21 @@ namespace PCGExClusterToZoneGraph
 
 #pragma endregion
 
-// Represents a polygon intersection shape, built from a non-leaf cluster node where multiple roads meet.
-//
-// Each road connecting to this polygon registers itself via Add(Road, bFromStart).
-// FromStart[i] tracks whether road i connects at its logical start or end.
-// This determines which of the road's cached Start/End values are used for that connection point.
-//
-// Precompute:
-//   1. Reads per-vertex polygon properties (radius, routing type, point type, tags) from vertex buffers or defaults
-//   2. Computes per-road radii based on auto-radius mode and lane profile widths
-//   3. Sorts connections by angle around the polygon center to establish winding order
-//   4. Builds FZoneShapePoint per connection with position, rotation (facing inward), lane profile,
-//      bReverseLaneProfile, InnerTurnRadius, Roll, and ConnectionRestrictions from the connected road
-//   5. Stores polygon boundary data (center, direction, radius) back on each road for endpoint trimming
-//
-// Compile (main thread): sets shape type, routing, tags, per-point lane profiles, then pushes points to the component.
+	// Represents a polygon intersection shape, built from a non-leaf cluster node where multiple roads meet.
+	//
+	// Each road connecting to this polygon registers itself via Add(Road, bFromStart).
+	// FromStart[i] tracks whether road i connects at its logical start or end.
+	// This determines which of the road's cached Start/End values are used for that connection point.
+	//
+	// Precompute:
+	//   1. Reads per-vertex polygon properties (radius, routing type, point type, tags) from vertex buffers or defaults
+	//   2. Computes per-road radii based on auto-radius mode and lane profile widths
+	//   3. Sorts connections by angle around the polygon center to establish winding order
+	//   4. Builds FZoneShapePoint per connection with position, rotation (facing inward), lane profile,
+	//      bReverseLaneProfile, InnerTurnRadius, Roll, and ConnectionRestrictions from the connected road
+	//   5. Stores polygon boundary data (center, direction, radius) back on each road for endpoint trimming
+	//
+	// Compile (main thread): sets shape type, routing, tags, per-point lane profiles, then pushes points to the component.
 #pragma region FZGPolygon
 
 	FZGPolygon::FZGPolygon(FProcessor* InProcessor, const PCGExClusters::FNode* InNode)
@@ -888,10 +979,18 @@ namespace PCGExClusterToZoneGraph
 
 				switch (Policy)
 				{
-				case EPCGExZGRadiusOverridePolicy::Replace: Radius = AutoR; break;
-				case EPCGExZGRadiusOverridePolicy::Min:     Radius = FMath::Max(CachedRadius, AutoR); break;
-				case EPCGExZGRadiusOverridePolicy::Max:     Radius = FMath::Min(CachedRadius, AutoR); break;
-				case EPCGExZGRadiusOverridePolicy::Offset:  Radius = AutoR + CachedRadius; break;
+				case EPCGExZGRadiusOverridePolicy::Replace:
+					Radius = AutoR;
+					break;
+				case EPCGExZGRadiusOverridePolicy::Min:
+					Radius = FMath::Max(CachedRadius, AutoR);
+					break;
+				case EPCGExZGRadiusOverridePolicy::Max:
+					Radius = FMath::Min(CachedRadius, AutoR);
+					break;
+				case EPCGExZGRadiusOverridePolicy::Offset:
+					Radius = AutoR + CachedRadius;
+					break;
 				}
 			}
 
@@ -923,8 +1022,14 @@ namespace PCGExClusterToZoneGraph
 			EP.Radius = CachedRoadRadii[Ri];
 			EP.bValid = true;
 
-			if (FromStart[Ri]) { Road->StartEndpoint = EP; }
-			else { Road->EndEndpoint = EP; }
+			if (FromStart[Ri])
+			{
+				Road->StartEndpoint = EP;
+			}
+			else
+			{
+				Road->EndEndpoint = EP;
+			}
 
 			FZoneShapePoint ShapePoint = FZoneShapePoint(CenterPosition + RoadDirection * CachedRoadRadii[Ri]);
 			ShapePoint.SetRotationFromForwardAndUp(RoadDirection * -1, FVector::UpVector);
@@ -969,17 +1074,29 @@ namespace PCGExClusterToZoneGraph
 			const FVector& Di = InRoadDirections[i];
 			for (int32 j = 0; j < N; j++)
 			{
-				if (j == i) { continue; }
+				if (j == i)
+				{
+					continue;
+				}
 
 				const double SinTheta = FVector::CrossProduct(Di, InRoadDirections[j]).Size();
-				if (SinTheta < SinEpsilon) { continue; }
+				if (SinTheta < SinEpsilon)
+				{
+					continue;
+				}
 
 				Ri = FMath::Max(Ri, InHalfWidths[j] / SinTheta);
 				bAnyConstraint = true;
 			}
 
-			if (!bAnyConstraint) { Ri = FallbackValue; }
-			if (HardCap > 0.0) { Ri = FMath::Min(Ri, HardCap); }
+			if (!bAnyConstraint)
+			{
+				Ri = FallbackValue;
+			}
+			if (HardCap > 0.0)
+			{
+				Ri = FMath::Min(Ri, HardCap);
+			}
 			OutRadii[i] = Ri;
 		}
 	}
@@ -1049,27 +1166,27 @@ namespace PCGExClusterToZoneGraph
 
 #pragma endregion
 
-// Per-cluster processor. Orchestrates the full conversion pipeline:
-//
-// Process():
-//   - Initializes direction settings and buffer getters (vertex and edge sourced)
-//   - Runs vertex filters to identify breakpoints, then builds chains
-//   - Optionally runs edge filters for the lane profile flip feature
-//
-// CompleteWork() (off main thread):
-//   - Computes road orientation (DFS / global direction / sort direction)
-//   - Creates FZGRoad and FZGPolygon instances from chains and non-leaf nodes
-//   - Runs the resolution pipeline in phases:
-//       Phase 1:  Resolve lane profiles (majority vote across chain edges)
-//       Phase 1b: Resolve reverse lane profile override (edge filter majority vote)
-//       Phase 1c: Resolve polygon point properties (InnerTurnRadius, Roll, ConnectionRestrictions from edge endpoints)
-//       Phase 2:  Polygon precompute (reads vertex properties, builds connection points, sorts by angle)
-//       Phase 3:  Sync polygon radii back to road endpoints
-//       Phase 4:  Road precompute (build shape points, trim at polygon boundaries, compute tangents)
-//   - Queues a time-sliced main-thread loop for component creation and compilation
-//
-// The main-thread loop (MainCompileLoop) handles InitComponent, Compile, and optional path output
-// for both polygons and roads, since UZoneShapeComponent creation requires the game thread.
+	// Per-cluster processor. Orchestrates the full conversion pipeline:
+	//
+	// Process():
+	//   - Initializes direction settings and buffer getters (vertex and edge sourced)
+	//   - Runs vertex filters to identify breakpoints, then builds chains
+	//   - Optionally runs edge filters for the lane profile flip feature
+	//
+	// CompleteWork() (off main thread):
+	//   - Computes road orientation (DFS / global direction / sort direction)
+	//   - Creates FZGRoad and FZGPolygon instances from chains and non-leaf nodes
+	//   - Runs the resolution pipeline in phases:
+	//       Phase 1:  Resolve lane profiles (majority vote across chain edges)
+	//       Phase 1b: Resolve reverse lane profile override (edge filter majority vote)
+	//       Phase 1c: Resolve polygon point properties (InnerTurnRadius, Roll, ConnectionRestrictions from edge endpoints)
+	//       Phase 2:  Polygon precompute (reads vertex properties, builds connection points, sorts by angle)
+	//       Phase 3:  Sync polygon radii back to road endpoints
+	//       Phase 4:  Road precompute (build shape points, trim at polygon boundaries, compute tangents)
+	//   - Queues a time-sliced main-thread loop for component creation and compilation
+	//
+	// The main-thread loop (MainCompileLoop) handles InitComponent, Compile, and optional path output
+	// for both polygons and roads, since UZoneShapeComponent creation requires the game thread.
 #pragma region FProcessor
 
 	bool FProcessor::Process(const TSharedPtr<PCGExMT::FTaskManager>& InTaskManager)
@@ -1078,10 +1195,16 @@ namespace PCGExClusterToZoneGraph
 
 		DefaultEdgeFilterValue = false;
 		EdgeFilterFactories = &Context->FlipEdgeFilterFactories; // So filters can be initialized
-		
-		if (!IProcessor::Process(InTaskManager)) { return false; }
 
-		if (!DirectionSettings.InitFromParent(ExecutionContext, GetParentBatch<FBatch>()->DirectionSettings, EdgeDataFacade)) { return false; }
+		if (!IProcessor::Process(InTaskManager))
+		{
+			return false;
+		}
+
+		if (!DirectionSettings.InitFromParent(ExecutionContext, GetParentBatch<FBatch>()->DirectionSettings, EdgeDataFacade))
+		{
+			return false;
+		}
 
 		const FPCGExZGPolygonSettings& PS = Settings->PolygonSettings;
 		const FPCGExZGRoadSettings& RS = Settings->RoadSettings;
@@ -1089,65 +1212,101 @@ namespace PCGExClusterToZoneGraph
 		if (PS.bOverridePolygonRadius)
 		{
 			PolygonRadiusBuffer = VtxDataFacade->GetBroadcaster<double>(PS.PolygonRadiusAttribute);
-			if (!PolygonRadiusBuffer) { PCGEX_LOG_INVALID_ATTR_C(ExecutionContext, PolygonRadius, PS.PolygonRadiusAttribute) }
+			if (!PolygonRadiusBuffer)
+			{
+				PCGEX_LOG_INVALID_ATTR_C(ExecutionContext, PolygonRadius, PS.PolygonRadiusAttribute)
+			}
 		}
 		if (PS.bOverridePolygonRoutingType)
 		{
 			PolygonRoutingTypeBuffer = VtxDataFacade->GetBroadcaster<int32>(PS.PolygonRoutingTypeAttribute);
-			if (!PolygonRoutingTypeBuffer) { PCGEX_LOG_INVALID_ATTR_C(ExecutionContext, PolygonRoutingType, PS.PolygonRoutingTypeAttribute) }
+			if (!PolygonRoutingTypeBuffer)
+			{
+				PCGEX_LOG_INVALID_ATTR_C(ExecutionContext, PolygonRoutingType, PS.PolygonRoutingTypeAttribute)
+			}
 		}
 		if (PS.bOverridePolygonPointType)
 		{
 			PolygonPointTypeBuffer = VtxDataFacade->GetBroadcaster<int32>(PS.PolygonPointTypeAttribute);
-			if (!PolygonPointTypeBuffer) { PCGEX_LOG_INVALID_ATTR_C(ExecutionContext, PolygonPointType, PS.PolygonPointTypeAttribute) }
+			if (!PolygonPointTypeBuffer)
+			{
+				PCGEX_LOG_INVALID_ATTR_C(ExecutionContext, PolygonPointType, PS.PolygonPointTypeAttribute)
+			}
 		}
 		if (RS.bOverrideRoadPointType)
 		{
 			RoadPointTypeBuffer = VtxDataFacade->GetBroadcaster<int32>(RS.RoadPointTypeAttribute);
-			if (!RoadPointTypeBuffer) { PCGEX_LOG_INVALID_ATTR_C(ExecutionContext, RoadPointType, RS.RoadPointTypeAttribute) }
+			if (!RoadPointTypeBuffer)
+			{
+				PCGEX_LOG_INVALID_ATTR_C(ExecutionContext, RoadPointType, RS.RoadPointTypeAttribute)
+			}
 		}
 		if (PS.IntersectionTagsMode != EPCGExZGBitmaskMode::None)
 		{
 			AdditionalIntersectionTagsBuffer = VtxDataFacade->GetBroadcaster<int32>(PS.IntersectionTagsAttribute);
-			if (!AdditionalIntersectionTagsBuffer) { PCGEX_LOG_INVALID_ATTR_C(ExecutionContext, IntersectionTags, PS.IntersectionTagsAttribute) }
+			if (!AdditionalIntersectionTagsBuffer)
+			{
+				PCGEX_LOG_INVALID_ATTR_C(ExecutionContext, IntersectionTags, PS.IntersectionTagsAttribute)
+			}
 		}
 
 		if (Settings->RoadSettings.bOverrideLaneProfile)
 		{
 			EdgeLaneProfileBuffer = EdgeDataFacade->GetBroadcaster<FName>(Settings->RoadSettings.LaneProfileAttribute);
-			if (!EdgeLaneProfileBuffer) { PCGEX_LOG_INVALID_ATTR_C(ExecutionContext, LaneProfile, Settings->RoadSettings.LaneProfileAttribute) }
+			if (!EdgeLaneProfileBuffer)
+			{
+				PCGEX_LOG_INVALID_ATTR_C(ExecutionContext, LaneProfile, Settings->RoadSettings.LaneProfileAttribute)
+			}
 		}
 
 		if (RS.RoadTangentLengthMode == EPCGExZGTangentLengthMode::Manual)
 		{
 			TangentLengthGetter = RS.TangentLength.GetValueSetting();
-			if (!TangentLengthGetter->Init(VtxDataFacade, false)) { return false; }
+			if (!TangentLengthGetter->Init(VtxDataFacade, false))
+			{
+				return false;
+			}
 		}
 
 		// Edge-sourced polygon point property getters
 		{
 			InnerTurnRadiusStartGetter = PS.InnerTurnRadiusPrimary.GetValueSetting();
-			if (!InnerTurnRadiusStartGetter->Init(EdgeDataFacade, false)) { InnerTurnRadiusStartGetter.Reset(); }
+			if (!InnerTurnRadiusStartGetter->Init(EdgeDataFacade, false))
+			{
+				InnerTurnRadiusStartGetter.Reset();
+			}
 
 			if (PS.bSeparateInnerTurnRadiusSecondary)
 			{
 				InnerTurnRadiusEndGetter = PS.InnerTurnRadiusSecondary.GetValueSetting();
-				if (!InnerTurnRadiusEndGetter->Init(EdgeDataFacade, false)) { InnerTurnRadiusEndGetter.Reset(); }
+				if (!InnerTurnRadiusEndGetter->Init(EdgeDataFacade, false))
+				{
+					InnerTurnRadiusEndGetter.Reset();
+				}
 			}
 
 			RollStartGetter = PS.RollPrimary.GetValueSetting();
-			if (!RollStartGetter->Init(EdgeDataFacade, false)) { RollStartGetter.Reset(); }
+			if (!RollStartGetter->Init(EdgeDataFacade, false))
+			{
+				RollStartGetter.Reset();
+			}
 
 			if (PS.bSeparateRollSecondary)
 			{
 				RollEndGetter = PS.RollSecondary.GetValueSetting();
-				if (!RollEndGetter->Init(EdgeDataFacade, false)) { RollEndGetter.Reset(); }
+				if (!RollEndGetter->Init(EdgeDataFacade, false))
+				{
+					RollEndGetter.Reset();
+				}
 			}
 
 			if (PS.ConnectionRestrictionMode != EPCGExZGBitmaskMode::None)
 			{
 				ConnectionRestrictionsBuffer = EdgeDataFacade->GetBroadcaster<int32>(PS.ConnectionRestrictionsAttribute);
-				if (!ConnectionRestrictionsBuffer) { PCGEX_LOG_INVALID_ATTR_C(ExecutionContext, ConnectionRestrictions, PS.ConnectionRestrictionsAttribute) }
+				if (!ConnectionRestrictionsBuffer)
+				{
+					PCGEX_LOG_INVALID_ATTR_C(ExecutionContext, ConnectionRestrictions, PS.ConnectionRestrictionsAttribute)
+				}
 			}
 		}
 
@@ -1187,7 +1346,10 @@ namespace PCGExClusterToZoneGraph
 			VtxFilterCache,
 			false);
 
-		if (!bIsProcessorValid) { return false; }
+		if (!bIsProcessorValid)
+		{
+			return false;
+		}
 
 		Polygons.Reserve(NumNodes / 2);
 
@@ -1195,7 +1357,7 @@ namespace PCGExClusterToZoneGraph
 		{
 			StartParallelLoopForEdges();
 		}
-		
+
 		return bIsProcessorValid;
 	}
 
@@ -1215,12 +1377,18 @@ namespace PCGExClusterToZoneGraph
 
 		TArray<bool> DFSReversed;
 		if (Settings->OrientationMode == EPCGExZGOrientationMode::DepthFirst ||
-			Settings->OrientationMode == EPCGExZGOrientationMode::TrafficFlow) { ComputeTrafficFlowOrientation(DFSReversed); }
+			Settings->OrientationMode == EPCGExZGOrientationMode::TrafficFlow)
+		{
+			ComputeTrafficFlowOrientation(DFSReversed);
+		}
 
 		for (int i = 0; i < NumChains; i++)
 		{
 			const TSharedPtr<PCGExClusters::FNodeChain>& Chain = ProcessedChains[i];
-			if (!Chain) { continue; }
+			if (!Chain)
+			{
+				continue;
+			}
 
 			int32 StartNode = Chain->Seed.Node;
 			int32 EndNode = Chain->Links.Last().Node;
@@ -1231,16 +1399,22 @@ namespace PCGExClusterToZoneGraph
 			case EPCGExZGOrientationMode::DepthFirst:
 			case EPCGExZGOrientationMode::TrafficFlow:
 				bReverse = DFSReversed[i] != Settings->bInvertOrientation;
-				if (bReverse) { Swap(StartNode, EndNode); }
+				if (bReverse)
+				{
+					Swap(StartNode, EndNode);
+				}
 				break;
 
 			case EPCGExZGOrientationMode::GlobalDirection:
+			{
+				const FVector RoadDir = (Cluster->GetPos(EndNode) - Cluster->GetPos(StartNode)).GetSafeNormal();
+				bReverse = (FVector::DotProduct(RoadDir, Settings->OrientationDirection) < 0) != Settings->bInvertOrientation;
+				if (bReverse)
 				{
-					const FVector RoadDir = (Cluster->GetPos(EndNode) - Cluster->GetPos(StartNode)).GetSafeNormal();
-					bReverse = (FVector::DotProduct(RoadDir, Settings->OrientationDirection) < 0) != Settings->bInvertOrientation;
-					if (bReverse) { Swap(StartNode, EndNode); }
+					Swap(StartNode, EndNode);
 				}
-				break;
+			}
+			break;
 
 			default: // SortDirection
 				bReverse = DirectionSettings.SortExtrapolation(Cluster.Get(), Chain->Seed.Edge, StartNode, EndNode);
@@ -1310,22 +1484,43 @@ namespace PCGExClusterToZoneGraph
 
 		// Precompute all geometry off main thread
 		// Phase 1: Resolve lane profiles + cache widths (needed by auto-radius)
-		for (const TSharedPtr<FZGRoad>& Road : Roads) { Road->ResolveLaneProfile(Cluster); }
+		for (const TSharedPtr<FZGRoad>& Road : Roads)
+		{
+			Road->ResolveLaneProfile(Cluster);
+		}
 		// Phase 1b: Resolve per-road reverse lane profile override (majority vote)
-		for (const TSharedPtr<FZGRoad>& Road : Roads) { Road->ResolveReverseLaneProfile(Cluster); }
+		for (const TSharedPtr<FZGRoad>& Road : Roads)
+		{
+			Road->ResolveReverseLaneProfile(Cluster);
+		}
 		// Phase 1c: Resolve per-road polygon point properties (InnerTurnRadius, Roll, ConnectionRestrictions)
-		for (const TSharedPtr<FZGRoad>& Road : Roads) { Road->ResolvePolygonPointProperties(Cluster); }
+		for (const TSharedPtr<FZGRoad>& Road : Roads)
+		{
+			Road->ResolvePolygonPointProperties(Cluster);
+		}
 		// Phase 2: Polygon precompute (uses road widths for auto-radius)
-		for (const TSharedPtr<FZGPolygon>& Polygon : Polygons) { Polygon->Precompute(Cluster); }
+		for (const TSharedPtr<FZGPolygon>& Polygon : Polygons)
+		{
+			Polygon->Precompute(Cluster);
+		}
 		// Phase 3: Push final polygon radii back to road endpoints
-		for (const TSharedPtr<FZGPolygon>& Polygon : Polygons) { Polygon->SyncRadiusToRoads(); }
+		for (const TSharedPtr<FZGPolygon>& Polygon : Polygons)
+		{
+			Polygon->SyncRadiusToRoads();
+		}
 		// Phase 4: Road precompute (uses synced radii for endpoint offsets)
-		for (const TSharedPtr<FZGRoad>& Road : Roads) { Road->Precompute(Cluster); }
+		for (const TSharedPtr<FZGRoad>& Road : Roads)
+		{
+			Road->Precompute(Cluster);
+		}
 
 		const int32 NumPolygons = Polygons.Num();
 		const int32 TotalCount = NumPolygons + Roads.Num();
 
-		if (TotalCount == 0) { return; }
+		if (TotalCount == 0)
+		{
+			return;
+		}
 
 		CachedAttachmentRules = Settings->AttachmentRules.GetRules();
 
@@ -1350,7 +1545,10 @@ namespace PCGExClusterToZoneGraph
 				}
 			}
 
-			if (!This->TargetActor) { return; }
+			if (!This->TargetActor)
+			{
+				return;
+			}
 
 			if (Index < NumPolygons)
 			{
@@ -1372,7 +1570,10 @@ namespace PCGExClusterToZoneGraph
 			{
 				const int32 RoadIndex = Index - NumPolygons;
 				auto& Road = This->Roads[RoadIndex];
-				if (Road->bDegenerate) { return; }
+				if (Road->bDegenerate)
+				{
+					return;
+				}
 				Road->InitComponent(This->TargetActor);
 				This->Context->AttachManagedComponent(This->TargetActor, Road->Component, This->CachedAttachmentRules);
 				Road->Compile();
@@ -1389,7 +1590,10 @@ namespace PCGExClusterToZoneGraph
 		MainCompileLoop->OnCompleteCallback = [PCGEX_ASYNC_THIS_CAPTURE]()
 		{
 			PCGEX_ASYNC_THIS
-			if (This->TargetActor) { This->Context->AddNotifyActor(This->TargetActor); }
+			if (This->TargetActor)
+			{
+				This->Context->AddNotifyActor(This->TargetActor);
+			}
 		};
 
 		PCGEX_ASYNC_HANDLE_CHKD_VOID(TaskManager, MainCompileLoop)
@@ -1434,7 +1638,10 @@ namespace PCGExClusterToZoneGraph
 		for (int32 i = 0; i < NumChains; i++)
 		{
 			const auto& Chain = ProcessedChains[i];
-			if (!Chain) { continue; }
+			if (!Chain)
+			{
+				continue;
+			}
 			const int32 SN = Chain->Seed.Node;
 			const int32 EN = Chain->Links.Last().Node;
 			NodeAdj.FindOrAdd(SN).Add({i, EN, true});
@@ -1465,11 +1672,17 @@ namespace PCGExClusterToZoneGraph
 			{
 				const int32 Cur = PropQueue[Head++];
 				const TArray<FAdj>* Adjs = NodeAdj.Find(Cur);
-				if (!Adjs) { continue; }
+				if (!Adjs)
+				{
+					continue;
+				}
 
 				for (const FAdj& A : *Adjs)
 				{
-					if (Oriented[A.ChainIdx] || Cluster->GetNode(A.OtherNode)->IsLeaf()) { continue; }
+					if (Oriented[A.ChainIdx] || Cluster->GetNode(A.OtherNode)->IsLeaf())
+					{
+						continue;
+					}
 
 					// Orient chain so it flows Cur → OtherNode.
 					// bIsSeed=true means Cur==SN, so the natural SN→EN direction already flows Cur→Other: no reverse.
@@ -1485,14 +1698,20 @@ namespace PCGExClusterToZoneGraph
 		for (int32 i = 0; i < NumChains; i++)
 		{
 			const auto& Chain = ProcessedChains[i];
-			if (!Chain) { continue; }
+			if (!Chain)
+			{
+				continue;
+			}
 
 			const int32 SN = Chain->Seed.Node;
 			const int32 EN = Chain->Links.Last().Node;
 			const bool bSeedLeaf = Cluster->GetNode(SN)->IsLeaf();
 			const bool bEndLeaf = Cluster->GetNode(EN)->IsLeaf();
 
-			if (bSeedLeaf == bEndLeaf) { continue; } // both-leaf or both-poly: deferred
+			if (bSeedLeaf == bEndLeaf)
+			{
+				continue;
+			} // both-leaf or both-poly: deferred
 
 			if (bSeedLeaf)
 			{
@@ -1521,10 +1740,16 @@ namespace PCGExClusterToZoneGraph
 
 		for (int32 i = 0; i < NumChains; i++)
 		{
-			if (Oriented[i]) { continue; }
+			if (Oriented[i])
+			{
+				continue;
+			}
 
 			const auto& Chain = ProcessedChains[i];
-			if (!Chain) { continue; }
+			if (!Chain)
+			{
+				continue;
+			}
 
 			const int32 SN = Chain->Seed.Node;
 			const int32 EN = Chain->Links.Last().Node;
@@ -1558,7 +1783,10 @@ namespace PCGExClusterToZoneGraph
 
 	FZoneLaneProfileRef FProcessor::ResolveLaneProfileByName(FName ProfileName) const
 	{
-		if (ProfileName.IsNone()) { return Settings->RoadSettings.LaneProfile; }
+		if (ProfileName.IsNone())
+		{
+			return Settings->RoadSettings.LaneProfile;
+		}
 		if (const FZoneLaneProfileRef* Found = Context->LaneProfileMap.Find(ProfileName))
 		{
 			return *Found;
@@ -1590,10 +1818,10 @@ namespace PCGExClusterToZoneGraph
 
 #pragma endregion
 
-// Batch-level setup. Runs once per vertex/edge set before processors are created.
-// Handles direction settings initialization and vertex buffer preloading.
-// Edge buffers (lane profile, polygon point properties) are lazily initialized in FProcessor::Process()
-// since the edge facade preloader isn't available here.
+	// Batch-level setup. Runs once per vertex/edge set before processors are created.
+	// Handles direction settings initialization and vertex buffer preloading.
+	// Edge buffers (lane profile, polygon point properties) are lazily initialized in FProcessor::Process()
+	// since the edge facade preloader isn't available here.
 #pragma region FBatch
 
 	void FBatch::RegisterBuffersDependencies(PCGExData::FFacadePreloader& FacadePreloader)
@@ -1605,11 +1833,26 @@ namespace PCGExClusterToZoneGraph
 		const FPCGExZGPolygonSettings& PS = Settings->PolygonSettings;
 		const FPCGExZGRoadSettings& RS = Settings->RoadSettings;
 
-		if (PS.bOverridePolygonRadius) { FacadePreloader.Register<double>(ExecutionContext, PS.PolygonRadiusAttribute, PCGExData::EBufferPreloadType::BroadcastFromName); }
-		if (PS.bOverridePolygonRoutingType) { FacadePreloader.Register<int32>(ExecutionContext, PS.PolygonRoutingTypeAttribute, PCGExData::EBufferPreloadType::BroadcastFromName); }
-		if (PS.bOverridePolygonPointType) { FacadePreloader.Register<int32>(ExecutionContext, PS.PolygonPointTypeAttribute, PCGExData::EBufferPreloadType::BroadcastFromName); }
-		if (RS.bOverrideRoadPointType) { FacadePreloader.Register<int32>(ExecutionContext, RS.RoadPointTypeAttribute, PCGExData::EBufferPreloadType::BroadcastFromName); }
-		if (PS.IntersectionTagsMode != EPCGExZGBitmaskMode::None) { FacadePreloader.Register<int32>(ExecutionContext, PS.IntersectionTagsAttribute, PCGExData::EBufferPreloadType::BroadcastFromName); }
+		if (PS.bOverridePolygonRadius)
+		{
+			FacadePreloader.Register<double>(ExecutionContext, PS.PolygonRadiusAttribute, PCGExData::EBufferPreloadType::BroadcastFromName);
+		}
+		if (PS.bOverridePolygonRoutingType)
+		{
+			FacadePreloader.Register<int32>(ExecutionContext, PS.PolygonRoutingTypeAttribute, PCGExData::EBufferPreloadType::BroadcastFromName);
+		}
+		if (PS.bOverridePolygonPointType)
+		{
+			FacadePreloader.Register<int32>(ExecutionContext, PS.PolygonPointTypeAttribute, PCGExData::EBufferPreloadType::BroadcastFromName);
+		}
+		if (RS.bOverrideRoadPointType)
+		{
+			FacadePreloader.Register<int32>(ExecutionContext, RS.RoadPointTypeAttribute, PCGExData::EBufferPreloadType::BroadcastFromName);
+		}
+		if (PS.IntersectionTagsMode != EPCGExZGBitmaskMode::None)
+		{
+			FacadePreloader.Register<int32>(ExecutionContext, PS.IntersectionTagsAttribute, PCGExData::EBufferPreloadType::BroadcastFromName);
+		}
 
 		if (RS.RoadTangentLengthMode == EPCGExZGTangentLengthMode::Manual)
 		{

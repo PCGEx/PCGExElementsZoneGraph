@@ -9,7 +9,7 @@
 class FPCGExElementsZoneGraphModule final : public IPCGExLegacyModuleInterface
 {
 	PCGEX_MODULE_BODY
-	
+
 public:
 	/** IModuleInterface implementation */
 	virtual void StartupModule() override;

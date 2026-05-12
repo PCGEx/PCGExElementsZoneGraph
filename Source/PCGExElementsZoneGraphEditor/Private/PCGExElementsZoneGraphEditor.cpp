@@ -4,9 +4,9 @@
 #include "PCGExElementsZoneGraphEditor.h"
 
 #include "PCGExAssetTypesMacros.h"
-#include "PropertyEditorModule.h"
-#include "PCGExZGSettingsCustomization.h"
 #include "PCGExZGPropertyTypes.h"
+#include "PCGExZGSettingsCustomization.h"
+#include "PropertyEditorModule.h"
 #include "Details/PCGExPropertyCompiledCustomization.h"
 
 void FPCGExElementsZoneGraphEditorModule::StartupModule()
