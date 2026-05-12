@@ -6,10 +6,10 @@
 #include "DetailWidgetRow.h"
 #include "IDetailChildrenBuilder.h"
 #include "Graph/PCGExClusterToZoneGraph.h"
-#include "Widgets/Text/STextBlock.h"
-#include "Widgets/Layout/SSeparator.h"
-#include "Widgets/Layout/SBox.h"
 #include "Widgets/SBoxPanel.h"
+#include "Widgets/Layout/SBox.h"
+#include "Widgets/Layout/SSeparator.h"
+#include "Widgets/Text/STextBlock.h"
 
 #define LOCTEXT_NAMESPACE "PCGExZGSettingsCustomization"
 
@@ -35,7 +35,10 @@ void FPCGExZGSettingsCustomization::CustomizeChildren(
 	for (uint32 i = 0; i < NumChildren; i++)
 	{
 		TSharedPtr<IPropertyHandle> ChildHandle = PropertyHandle->GetChildHandle(i);
-		if (!ChildHandle.IsValid()) { continue; }
+		if (!ChildHandle.IsValid())
+		{
+			continue;
+		}
 
 		// Check for CategorySeparator meta tag
 		if (ChildHandle->HasMetaData(TEXT("CategorySeparator")))
@@ -43,7 +46,7 @@ void FPCGExZGSettingsCustomization::CustomizeChildren(
 			const FString Title = ChildHandle->GetMetaData(TEXT("CategorySeparator"));
 
 			ChildBuilder.AddCustomRow(FText::FromString(Title))
-			.WholeRowContent()
+			            .WholeRowContent()
 			[
 				SNew(SBox)
 				.Padding(FMargin(-16, 0, 0, 0))
@@ -71,26 +74,26 @@ void FPCGExZGConvexFitSettingsCustomization::CustomizeHeader(
 	const TSharedPtr<IPropertyHandle> FallbackHandle = PropertyHandle->GetChildHandle(GET_MEMBER_NAME_CHECKED(FPCGExZGConvexFitSettings, Fallback));
 
 	HeaderRow
-	.NameContent()
-	[
-		PropertyHandle->CreatePropertyNameWidget()
-	]
-	.ValueContent()
-	.MinDesiredWidth(250.f)
-	[
-		SNew(SHorizontalBox)
-		+ SHorizontalBox::Slot()
-		.FillWidth(0.4f)
-		.Padding(0, 0, 4, 0)
+		.NameContent()
 		[
-			ClampHandle.IsValid() ? ClampHandle->CreatePropertyValueWidget() : SNullWidget::NullWidget
+			PropertyHandle->CreatePropertyNameWidget()
 		]
-		+ SHorizontalBox::Slot()
-		.FillWidth(0.6f)
+		.ValueContent()
+		.MinDesiredWidth(250.f)
 		[
-			FallbackHandle.IsValid() ? FallbackHandle->CreatePropertyValueWidget() : SNullWidget::NullWidget
-		]
-	];
+			SNew(SHorizontalBox)
+			+ SHorizontalBox::Slot()
+			.FillWidth(0.4f)
+			.Padding(0, 0, 4, 0)
+			[
+				ClampHandle.IsValid() ? ClampHandle->CreatePropertyValueWidget() : SNullWidget::NullWidget
+			]
+			+ SHorizontalBox::Slot()
+			.FillWidth(0.6f)
+			[
+				FallbackHandle.IsValid() ? FallbackHandle->CreatePropertyValueWidget() : SNullWidget::NullWidget
+			]
+		];
 }
 
 #undef LOCTEXT_NAMESPACE

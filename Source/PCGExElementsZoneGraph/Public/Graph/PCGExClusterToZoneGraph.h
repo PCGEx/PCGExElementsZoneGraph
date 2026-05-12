@@ -26,39 +26,39 @@ enum class EPCGExZGOrientationMode : uint8
 UENUM(BlueprintType)
 enum class EPCGExZGAutoRadiusMode : uint8
 {
-	Disabled       = 0 UMETA(DisplayName="Disabled"),
-	WidestLane     = 1 UMETA(DisplayName="Widest Lane",       Tooltip="Per-road: each road's own widest lane width."),
-	HalfProfile    = 2 UMETA(DisplayName="Half Profile",      Tooltip="Per-road: each road's own profile half-width."),
-	
+	Disabled    = 0 UMETA(DisplayName="Disabled"),
+	WidestLane  = 1 UMETA(DisplayName="Widest Lane", Tooltip="Per-road: each road's own widest lane width."),
+	HalfProfile = 2 UMETA(DisplayName="Half Profile", Tooltip="Per-road: each road's own profile half-width."),
+
 #pragma region DEPRECATED
-	
+
 	// Legacy -- migrated by ApplyDeprecation to (WidestLane, Min)
-	
-	WidestLaneMin  = 3 UMETA(Hidden),	
+
+	WidestLaneMin  = 3 UMETA(Hidden),
 	HalfProfileMin = 4 UMETA(Hidden),
-	
-#pragma endregion 
-	
-	
-	MaxWidestLane  = 5 UMETA(DisplayName="Max Widest Lane",   Tooltip="Aggregate: max widest-lane across all roads, applied uniformly to the polygon."),
-	MaxHalfProfile = 6 UMETA(DisplayName="Max Half Profile",  Tooltip="Aggregate: max half-profile across all roads, applied uniformly to the polygon."),
-	ConvexFit      = 7 UMETA(DisplayName="Convex Fit",        Tooltip="Per-road radius geometrically fitted to clear neighboring roads' profile strips."),
+
+#pragma endregion
+
+
+	MaxWidestLane  = 5 UMETA(DisplayName="Max Widest Lane", Tooltip="Aggregate: max widest-lane across all roads, applied uniformly to the polygon."),
+	MaxHalfProfile = 6 UMETA(DisplayName="Max Half Profile", Tooltip="Aggregate: max half-profile across all roads, applied uniformly to the polygon."),
+	ConvexFit      = 7 UMETA(DisplayName="Convex Fit", Tooltip="Per-road radius geometrically fitted to clear neighboring roads' profile strips."),
 };
 
 UENUM(BlueprintType)
 enum class EPCGExZGRadiusOverridePolicy : uint8
 {
-	Replace = 0 UMETA(DisplayName="Replace",     Tooltip="Auto value replaces the manual/attribute radius."),
-	Min     = 1 UMETA(DisplayName="Use as Min",  Tooltip="radius = max(manual, auto). Auto acts as a floor."),
-	Max     = 2 UMETA(DisplayName="Use as Max",  Tooltip="radius = min(manual, auto). Auto acts as a ceiling."),
-	Offset  = 3 UMETA(DisplayName="Additive",    Tooltip="radius = auto + manual. Manual is a uniform additive buffer."),
+	Replace = 0 UMETA(DisplayName="Replace", Tooltip="Auto value replaces the manual/attribute radius."),
+	Min     = 1 UMETA(DisplayName="Use as Min", Tooltip="radius = max(manual, auto). Auto acts as a floor."),
+	Max     = 2 UMETA(DisplayName="Use as Max", Tooltip="radius = min(manual, auto). Auto acts as a ceiling."),
+	Offset  = 3 UMETA(DisplayName="Additive", Tooltip="radius = auto + manual. Manual is a uniform additive buffer."),
 };
 
 UENUM(BlueprintType)
 enum class EPCGExZGConvexFitFallback : uint8
 {
 	Smallest = 0 UMETA(DisplayName="Smallest Profile", Tooltip="When no neighbor constrains a road's radius (e.g. dead-end, or chain-split with anti-parallel roads), fall back to the smallest profile half-width across all roads at the polygon. Guarantees a minimal non-zero polygon size."),
-	Largest  = 1 UMETA(DisplayName="Largest Profile",  Tooltip="When no neighbor constrains a road's radius, fall back to the largest profile half-width across all roads at the polygon. Produces a more generous polygon for transitions."),
+	Largest  = 1 UMETA(DisplayName="Largest Profile", Tooltip="When no neighbor constrains a road's radius, fall back to the largest profile half-width across all roads at the polygon. Produces a more generous polygon for transitions."),
 };
 
 USTRUCT(BlueprintType)
@@ -164,7 +164,7 @@ struct PCGEXELEMENTSZONEGRAPH_API FPCGExZGPolygonSettings
 	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = Settings, meta=(EditConditionHides, EditCondition="IntersectionTagsMode == EPCGExZGBitmaskMode::ValueMap"))
 	TMap<int32, FZoneGraphTagMask> IntersectionTagsValueMap;
 
-	
+
 	/** Inner turn radius for polygon arc routing. Read from: Edges (nearest edge to polygon connection). */
 	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = Settings, meta=(PCG_Overridable, DisplayName="Primary Turn Radius", CategorySeparator="Inner Turn Radius"))
 	FPCGExInputShorthandNameFloat InnerTurnRadiusPrimary = FPCGExInputShorthandNameFloat(FName("InnerTurnRadius"), 100.0f, false);
@@ -175,8 +175,8 @@ struct PCGEXELEMENTSZONEGRAPH_API FPCGExZGPolygonSettings
 	/** Separate inner turn radius for the end polygon connection. When disabled, Primary value is used for both. */
 	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = Settings, meta=(PCG_Overridable, DisplayName="Secondary Turn Radius", EditCondition="bSeparateInnerTurnRadiusSecondary"))
 	FPCGExInputShorthandNameFloat InnerTurnRadiusSecondary = FPCGExInputShorthandNameFloat(FName("InnerTurnRadius"), 100.0f, false);
-	
-	
+
+
 	/** Roll angle (degrees) applied to polygon connection points. Read from: Edges (nearest edge to polygon connection). */
 	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = Settings, meta=(PCG_Overridable, DisplayName="Primary Roll", CategorySeparator="Roll"))
 	FPCGExInputShorthandNameFloat RollPrimary = FPCGExInputShorthandNameFloat(FName("Roll"), 0.0f, false);
@@ -188,7 +188,7 @@ struct PCGEXELEMENTSZONEGRAPH_API FPCGExZGPolygonSettings
 	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = Settings, meta=(PCG_Overridable, DisplayName="Secondary Roll", EditCondition="bSeparateRollSecondary"))
 	FPCGExInputShorthandNameFloat RollSecondary = FPCGExInputShorthandNameFloat(FName("Roll"), 0.0f, false);
 
-	
+
 	/** How lane connection restrictions are sourced. */
 	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = Settings, meta=(CategorySeparator="Connection Restrictions"))
 	EPCGExZGBitmaskMode ConnectionRestrictionMode = EPCGExZGBitmaskMode::None;
@@ -263,12 +263,9 @@ namespace PCGExMT
 	class FTimeSlicedMainThreadLoop;
 }
 
-namespace PCGExZoneGraph
+namespace PCGExZoneGraph::Labels
 {
-	namespace Labels
-	{
-		const FName SourceEdgeFlipFiltersLabel = FName("Flip Conditions");
-	}
+	const FName SourceEdgeFlipFiltersLabel = FName("Flip Conditions");
 }
 
 UCLASS(MinimalAPI, BlueprintType, ClassGroup = (Procedural), Category="PCGEx|Clusters", meta=(PCGExNodeLibraryDoc="cluster-to-zone-graph"))
@@ -278,27 +275,45 @@ class UPCGExClusterToZoneGraphSettings : public UPCGExClustersProcessorSettings
 
 public:
 	UPCGExClusterToZoneGraphSettings();
-	
+
 	//~Begin UPCGSettings
 #if WITH_EDITOR
 	virtual void ApplyDeprecation(UPCGNode* InOutNode) override;
-	
+
 	PCGEX_NODE_INFOS(ClusterToZoneGraph, "Cluster to Zone Graph", "Create Zone Graph from clusters.");
-	virtual FLinearColor GetNodeTitleColor() const override { return GetDefault<UPCGExGlobalSettings>()->ColorClusterOp; }
+
+	virtual FLinearColor GetNodeTitleColor() const override
+	{
+		return GetDefault<UPCGExGlobalSettings>()->ColorClusterOp;
+	}
+
 	virtual void PostEditChangeProperty(struct FPropertyChangedEvent& PropertyChangedEvent) override;
 #endif
 
 protected:
-	virtual bool OutputPinsCanBeDeactivated() const override { return true; }
+	virtual bool OutputPinsCanBeDeactivated() const override
+	{
+		return true;
+	}
+
 	virtual TArray<FPCGPinProperties> InputPinProperties() const override;
 	virtual TArray<FPCGPinProperties> OutputPinProperties() const override;
 	virtual FPCGElementPtr CreateElement() const override;
-	virtual bool ShouldCache() const override { return false; }
+
+	virtual bool ShouldCache() const override
+	{
+		return false;
+	}
+
 	//~End UPCGSettings
 
 	//~Begin UPCGExPointsProcessorSettings
 public:
-	virtual bool SupportsEdgeSorting() const override { return DirectionSettings.RequiresSortingRules(); }
+	virtual bool SupportsEdgeSorting() const override
+	{
+		return DirectionSettings.RequiresSortingRules();
+	}
+
 	virtual PCGExData::EIOInit GetMainOutputInitMode() const override;
 	virtual PCGExData::EIOInit GetEdgeOutputInitMode() const override;
 	PCGEX_NODE_POINT_FILTER(FName("Break Conditions"), "Filters used to know which points are 'break' points. Use those if you want to create more polygon shapes.", PCGExFactories::ClusterNodeFilters, false)
@@ -389,8 +404,15 @@ protected:
 	virtual bool Boot(FPCGExContext* InContext) const override;
 	virtual bool AdvanceWork(FPCGExContext* InContext, const UPCGExSettings* InSettings) const override;
 
-	virtual bool CanExecuteOnlyOnMainThread(FPCGContext* Context) const override { return true; }
-	virtual bool IsCacheable(const UPCGSettings* InSettings) const override { return false; }
+	virtual bool CanExecuteOnlyOnMainThread(FPCGContext* Context) const override
+	{
+		return true;
+	}
+
+	virtual bool IsCacheable(const UPCGSettings* InSettings) const override
+	{
+		return false;
+	}
 };
 
 namespace PCGExClusterToZoneGraph
@@ -528,7 +550,10 @@ namespace PCGExClusterToZoneGraph
 		{
 		}
 
-		virtual bool IsTrivial() const override { return false; }
+		virtual bool IsTrivial() const override
+		{
+			return false;
+		}
 
 		virtual bool Process(const TSharedPtr<PCGExMT::FTaskManager>& InTaskManager) override;
 		bool BuildChains();
