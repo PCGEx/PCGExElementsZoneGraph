@@ -502,83 +502,24 @@ namespace PCGExClusterToZoneGraph
 		{
 			const bool bTrim = S->RoadSettings.bTrimRoadEndpoints;
 			const double BufferSq = S->RoadSettings.EndpointTrimBuffer * S->RoadSettings.EndpointTrimBuffer;
+			const EPCGExZGTangentLengthMode TangentLengthMode = S->RoadSettings.RoadTangentLengthMode;
 
 			// --- Start endpoint ---
 			if (!FirstNode->IsLeaf())
 			{
 				if (StartEndpoint.bValid && bTrim)
 				{
-					// Walk backward from end to find the outermost half-space boundary crossing.
-					bool bFoundCrossing = false;
-
-					for (int32 j = PrecomputedPoints.Num() - 1; j > 0; j--)
+					if (!TrimOpenEndpoint(true, DefaultPointType, BufferSq, TangentLengthMode))
 					{
-						const double ProjJ = (PrecomputedPoints[j].Position - StartEndpoint.PolygonCenter) | StartEndpoint.Direction;
-						const double ProjPrev = (PrecomputedPoints[j - 1].Position - StartEndpoint.PolygonCenter) | StartEndpoint.Direction;
-
-						if (ProjJ >= StartEndpoint.Radius && ProjPrev < StartEndpoint.Radius)
-						{
-							// Capture tangent lengths before removal for interpolation
-							const double TL_Prev = PrecomputedPoints[j - 1].TangentLength;
-							const double TL_J = PrecomputedPoints[j].TangentLength;
-
-							PrecomputedPoints.RemoveAt(0, j);
-
-							// Snap to polygon connector position for exact alignment
-							const FVector SnapPos = StartEndpoint.PolygonCenter + StartEndpoint.Direction * StartEndpoint.Radius;
-							FVector CrossingDir = (PrecomputedPoints[0].Position - SnapPos).GetSafeNormal();
-							if (CrossingDir.IsNearlyZero())
-							{
-								CrossingDir = StartEndpoint.Direction;
-							}
-
-							FZoneShapePoint CrossingPoint(SnapPos);
-							CrossingPoint.SetRotationFromForwardAndUp(CrossingDir, FVector::UpVector);
-							CrossingPoint.Type = DefaultPointType;
-
-							if (S->RoadSettings.RoadTangentLengthMode == EPCGExZGTangentLengthMode::Manual)
-							{
-								const double Alpha = (StartEndpoint.Radius - ProjPrev) / (ProjJ - ProjPrev);
-								CrossingPoint.TangentLength = FMath::Lerp(TL_Prev, TL_J, Alpha);
-							}
-
-							PrecomputedPoints.Insert(CrossingPoint, 0);
-
-							// Remove nearby points that would cause auto-bezier bulging
-							if (BufferSq > 0)
-							{
-								while (PrecomputedPoints.Num() > 2 &&
-									(PrecomputedPoints[1].Position - PrecomputedPoints[0].Position).SizeSquared() < BufferSq)
-								{
-									PrecomputedPoints.RemoveAt(1);
-								}
-							}
-
-							bFoundCrossing = true;
-							break;
-						}
-					}
-
-					if (!bFoundCrossing)
-					{
-						const double FirstProj = (PrecomputedPoints[0].Position - StartEndpoint.PolygonCenter) | StartEndpoint.Direction;
-						if (FirstProj < StartEndpoint.Radius)
-						{
-							bDegenerate = true;
-							return;
-						}
+						bDegenerate = true;
+						return;
 					}
 				}
 				else
 				{
-					if (bIsReversed)
-					{
-						PrecomputedPoints[0].Position += PrecomputedPoints[0].Rotation.RotateVector(FVector::BackwardVector) * StartRadius;
-					}
-					else
-					{
-						PrecomputedPoints[0].Position += PrecomputedPoints[0].Rotation.RotateVector(FVector::ForwardVector) * StartRadius;
-					}
+					// [0]'s Forward axis always points into the road interior (GetNodes already produced
+					// logical order), so a single direction works regardless of bIsReversed.
+					PrecomputedPoints[0].Position += PrecomputedPoints[0].Rotation.RotateVector(FVector::ForwardVector) * StartRadius;
 				}
 			}
 
@@ -587,79 +528,17 @@ namespace PCGExClusterToZoneGraph
 			{
 				if (EndEndpoint.bValid && bTrim)
 				{
-					// Walk backward from end to find the outermost half-space boundary crossing.
-					// Walking backward (not forward) prevents removing valid outside points
-					// that appear after an intermediate inside dip on curved roads.
-					bool bFoundCrossing = false;
-
-					for (int32 j = PrecomputedPoints.Num() - 1; j > 0; j--)
+					if (!TrimOpenEndpoint(false, DefaultPointType, BufferSq, TangentLengthMode))
 					{
-						const double ProjJ = (PrecomputedPoints[j].Position - EndEndpoint.PolygonCenter) | EndEndpoint.Direction;
-						const double ProjPrev = (PrecomputedPoints[j - 1].Position - EndEndpoint.PolygonCenter) | EndEndpoint.Direction;
-
-						if (ProjJ < EndEndpoint.Radius && ProjPrev >= EndEndpoint.Radius)
-						{
-							// Capture tangent lengths before removal for interpolation
-							const double TL_Prev = PrecomputedPoints[j - 1].TangentLength;
-							const double TL_J = PrecomputedPoints[j].TangentLength;
-
-							PrecomputedPoints.RemoveAt(j, PrecomputedPoints.Num() - j);
-
-							// Snap to polygon connector position for exact alignment
-							const FVector SnapPos = EndEndpoint.PolygonCenter + EndEndpoint.Direction * EndEndpoint.Radius;
-							FVector CrossingDir = (SnapPos - PrecomputedPoints.Last().Position).GetSafeNormal();
-							if (CrossingDir.IsNearlyZero())
-							{
-								CrossingDir = -EndEndpoint.Direction;
-							}
-
-							FZoneShapePoint CrossingPoint(SnapPos);
-							CrossingPoint.SetRotationFromForwardAndUp(CrossingDir, FVector::UpVector);
-							CrossingPoint.Type = DefaultPointType;
-
-							if (S->RoadSettings.RoadTangentLengthMode == EPCGExZGTangentLengthMode::Manual)
-							{
-								const double Alpha = (EndEndpoint.Radius - ProjPrev) / (ProjJ - ProjPrev);
-								CrossingPoint.TangentLength = FMath::Lerp(TL_Prev, TL_J, Alpha);
-							}
-
-							PrecomputedPoints.Add(CrossingPoint);
-
-							// Remove nearby points that would cause auto-bezier bulging
-							if (BufferSq > 0)
-							{
-								while (PrecomputedPoints.Num() > 2 &&
-									(PrecomputedPoints[PrecomputedPoints.Num() - 2].Position - PrecomputedPoints.Last().Position).SizeSquared() < BufferSq)
-								{
-									PrecomputedPoints.RemoveAt(PrecomputedPoints.Num() - 2);
-								}
-							}
-
-							bFoundCrossing = true;
-							break;
-						}
-					}
-
-					if (!bFoundCrossing)
-					{
-						const double LastProj = (PrecomputedPoints.Last().Position - EndEndpoint.PolygonCenter) | EndEndpoint.Direction;
-						if (LastProj < EndEndpoint.Radius)
-						{
-							bDegenerate = true;
-							return;
-						}
+						bDegenerate = true;
+						return;
 					}
 				}
 				else
 				{
-					if (bIsReversed)
-					{
-						PrecomputedPoints.Last().Position += PrecomputedPoints.Last().Rotation.RotateVector(FVector::ForwardVector) * EndRadius;
-					}
-					else
-					{
-						PrecomputedPoints.Last().Position += PrecomputedPoints.Last().Rotation.RotateVector(FVector::BackwardVector) * EndRadius;
-					}
+					// Last()'s Forward axis points away from the road interior (GetNodes already produced
+					// logical order), so Backward gets us back onto the polygon boundary.
+					PrecomputedPoints.Last().Position += PrecomputedPoints.Last().Rotation.RotateVector(FVector::BackwardVector) * EndRadius;
 				}
 			}
 
@@ -744,6 +623,7 @@ namespace PCGExClusterToZoneGraph
 			const bool bLoop = Chain->bIsClosedLoop && !StartEndpoint.bValid && !EndEndpoint.bValid;
 			const double Scale = S->RoadSettings.TangentLengthScale;
 			const bool bCatmullRom = (S->RoadSettings.RoadTangentLengthMode == EPCGExZGTangentLengthMode::CatmullRom);
+			const bool bClampShort = S->RoadSettings.bClampTangentLengthToShortNeighbor;
 
 			for (int32 k = 0; k < Num; k++)
 			{
@@ -776,19 +656,143 @@ namespace PCGExClusterToZoneGraph
 					PrecomputedPoints[k].SetRotationFromForwardAndUp(TangentDir, FVector::UpVector);
 				}
 
-				// Tangent magnitude
-				if (bCatmullRom)
+				// Auto formula needs per-neighbor distances; CatmullRom uses chord across both.
+				// The short-neighbor clamp also needs per-neighbor distances regardless of formula.
+				const bool bNeedNeighborDists = !bCatmullRom || bClampShort;
+				const double DistPrev = bNeedNeighborDists ? FVector::Dist(PrecomputedPoints[k].Position, Prev) : 0.0;
+				const double DistNext = bNeedNeighborDists ? FVector::Dist(PrecomputedPoints[k].Position, Next) : 0.0;
+
+				double Length = bCatmullRom
+					                ? FVector::Dist(Prev, Next) / 6.0
+					                : (DistPrev + DistNext) * 0.5 / 3.0;
+
+				// TangentLength is a single scalar shared by arrive/leave; clamping to MinDist/3 is
+				// the standard no-overshoot bezier rule when neighbors are very asymmetric (e.g. a
+				// boundary crossing point adjacent to a long road segment).
+				if (bClampShort)
 				{
-					PrecomputedPoints[k].TangentLength = FVector::Dist(Prev, Next) / 6.0 * Scale;
+					Length = FMath::Min(Length, FMath::Min(DistPrev, DistNext) / 3.0);
 				}
-				else // Auto
+
+				PrecomputedPoints[k].TangentLength = Length * Scale;
+			}
+		}
+	}
+
+	bool FZGRoad::TrimOpenEndpoint(const bool bIsStartSide, const FZoneShapePointType DefaultPointType, const double BufferSq, const EPCGExZGTangentLengthMode TangentLengthMode)
+	{
+		const FPolygonEndpoint& Endpoint = bIsStartSide ? StartEndpoint : EndEndpoint;
+		const int32 N = PrecomputedPoints.Num();
+
+		int32 CrossingIndex = -1;
+		double PrevTangentLength = 0.0;
+		double CrossingTangentLength = 0.0;
+		double LerpAlpha = 0.0;
+		bool bFoundCrossing = false;
+
+		auto TryMatch = [&](const int32 j) -> bool
+		{
+			const double ProjJ = (PrecomputedPoints[j].Position - Endpoint.PolygonCenter) | Endpoint.Direction;
+			const double ProjPrev = (PrecomputedPoints[j - 1].Position - Endpoint.PolygonCenter) | Endpoint.Direction;
+
+			const bool bMatch = bIsStartSide
+				                    ? (ProjJ >= Endpoint.Radius && ProjPrev < Endpoint.Radius)
+				                    : (ProjJ < Endpoint.Radius && ProjPrev >= Endpoint.Radius);
+
+			if (bMatch)
+			{
+				CrossingIndex = j;
+				PrevTangentLength = PrecomputedPoints[j - 1].TangentLength;
+				CrossingTangentLength = PrecomputedPoints[j].TangentLength;
+				LerpAlpha = (Endpoint.Radius - ProjPrev) / (ProjJ - ProjPrev);
+				bFoundCrossing = true;
+			}
+			return bMatch;
+		};
+
+		if (bIsStartSide)
+		{
+			for (int32 j = 1; j < N; j++)
+			{
+				if (TryMatch(j)) { break; }
+			}
+		}
+		else
+		{
+			// Walk backward from end so an intermediate inside dip on a curved road doesn't strip
+			// the valid outside points that come after it.
+			for (int32 j = N - 1; j > 0; j--)
+			{
+				if (TryMatch(j)) { break; }
+			}
+		}
+
+		if (!bFoundCrossing)
+		{
+			const double EdgeProj = bIsStartSide
+				                        ? ((PrecomputedPoints[0].Position - Endpoint.PolygonCenter) | Endpoint.Direction)
+				                        : ((PrecomputedPoints.Last().Position - Endpoint.PolygonCenter) | Endpoint.Direction);
+			return EdgeProj >= Endpoint.Radius;
+		}
+
+		const FVector SnapPos = Endpoint.PolygonCenter + Endpoint.Direction * Endpoint.Radius;
+		FZoneShapePoint CrossingPoint(SnapPos);
+		CrossingPoint.Type = DefaultPointType;
+
+		if (bIsStartSide)
+		{
+			PrecomputedPoints.RemoveAt(0, CrossingIndex);
+			FVector CrossingDir = (PrecomputedPoints[0].Position - SnapPos).GetSafeNormal();
+			if (CrossingDir.IsNearlyZero())
+			{
+				CrossingDir = Endpoint.Direction;
+			}
+			CrossingPoint.SetRotationFromForwardAndUp(CrossingDir, FVector::UpVector);
+
+			if (TangentLengthMode == EPCGExZGTangentLengthMode::Manual)
+			{
+				CrossingPoint.TangentLength = FMath::Lerp(PrevTangentLength, CrossingTangentLength, LerpAlpha);
+			}
+
+			PrecomputedPoints.Insert(CrossingPoint, 0);
+
+			if (BufferSq > 0)
+			{
+				while (PrecomputedPoints.Num() > 2 &&
+					(PrecomputedPoints[1].Position - PrecomputedPoints[0].Position).SizeSquared() < BufferSq)
 				{
-					const double DistPrev = FVector::Dist(PrecomputedPoints[k].Position, Prev);
-					const double DistNext = FVector::Dist(PrecomputedPoints[k].Position, Next);
-					PrecomputedPoints[k].TangentLength = (DistPrev + DistNext) * 0.5 / 3.0 * Scale;
+					PrecomputedPoints.RemoveAt(1);
 				}
 			}
 		}
+		else
+		{
+			PrecomputedPoints.RemoveAt(CrossingIndex, PrecomputedPoints.Num() - CrossingIndex);
+			FVector CrossingDir = (SnapPos - PrecomputedPoints.Last().Position).GetSafeNormal();
+			if (CrossingDir.IsNearlyZero())
+			{
+				CrossingDir = -Endpoint.Direction;
+			}
+			CrossingPoint.SetRotationFromForwardAndUp(CrossingDir, FVector::UpVector);
+
+			if (TangentLengthMode == EPCGExZGTangentLengthMode::Manual)
+			{
+				CrossingPoint.TangentLength = FMath::Lerp(PrevTangentLength, CrossingTangentLength, LerpAlpha);
+			}
+
+			PrecomputedPoints.Add(CrossingPoint);
+
+			if (BufferSq > 0)
+			{
+				while (PrecomputedPoints.Num() > 2 &&
+					(PrecomputedPoints[PrecomputedPoints.Num() - 2].Position - PrecomputedPoints.Last().Position).SizeSquared() < BufferSq)
+				{
+					PrecomputedPoints.RemoveAt(PrecomputedPoints.Num() - 2);
+				}
+			}
+		}
+
+		return true;
 	}
 
 	void FZGRoad::Compile()
@@ -910,7 +914,7 @@ namespace PCGExClusterToZoneGraph
 
 		const int32 NumRoads = Roads.Num();
 
-		// Pre-pass: outward road directions, half-widths, and polygon-wide aggregates — all in one sweep.
+		// Pre-pass: outward road directions, half-widths, and polygon-wide aggregates -- all in one sweep.
 		// RoadDirections is reused by the sort lambda and connection-point placement loop;
 		// HalfWidths feeds CachedPointHalfWidths and ConvexFit; aggregates feed the Max* modes.
 		TArray<FVector, TInlineAllocator<8>> RoadDirections;
@@ -1055,7 +1059,7 @@ namespace PCGExClusterToZoneGraph
 		TArray<double>& OutRadii) const
 	{
 		// r_i = max_j (hw_j / |sin(angle_ij)|): distance along d_i where each neighbor j's strip edge
-		// crosses d_i's centerline. hw_i (perpendicular to d_i) does not constrain r_i — when no
+		// crosses d_i's centerline. hw_i (perpendicular to d_i) does not constrain r_i -- when no
 		// neighbor constrains (collinear / dead-end), fall back to ConvexFitFallback to guarantee non-zero size.
 		const int32 N = InRoadDirections.Num();
 		OutRadii.SetNumUninitialized(N);
@@ -1382,6 +1386,17 @@ namespace PCGExClusterToZoneGraph
 			ComputeTrafficFlowOrientation(DFSReversed);
 		}
 
+		auto GetOrCreatePolygon = [&](const int32 NodeIdx) -> FZGPolygon&
+		{
+			if (const TSharedPtr<FZGPolygon>* Existing = Map.Find(NodeIdx))
+			{
+				return **Existing;
+			}
+			TSharedPtr<FZGPolygon> NewPolygon = MakeShared<FZGPolygon>(this, Cluster->GetNode(NodeIdx));
+			Polygons.Add(NewPolygon);
+			return *Map.Add(NodeIdx, NewPolygon);
+		};
+
 		for (int i = 0; i < NumChains; i++)
 		{
 			const TSharedPtr<PCGExClusters::FNodeChain>& Chain = ProcessedChains[i];
@@ -1438,47 +1453,20 @@ namespace PCGExClusterToZoneGraph
 				// Non-roaming closed loop: wraps back to seed node. The binary "end" node is
 				// the last step before returning -- not a real junction. Connect both road ends
 				// to the seed polygon only.
-				const int32 SeedNode = Chain->Seed.Node;
-				TSharedPtr<FZGPolygon>* PolygonPtr = Map.Find(SeedNode);
-				if (!PolygonPtr)
-				{
-					TSharedPtr<FZGPolygon> NewPolygon = MakeShared<FZGPolygon>(this, Cluster->GetNode(SeedNode));
-					Polygons.Add(NewPolygon);
-					Map.Add(SeedNode, NewPolygon);
-					PolygonPtr = Map.Find(SeedNode);
-				}
-				(*PolygonPtr)->Add(Road, true);  // road start connects here
-				(*PolygonPtr)->Add(Road, false); // road end connects here
+				FZGPolygon& Poly = GetOrCreatePolygon(Chain->Seed.Node);
+				Poly.Add(Road, true);  // road start connects here
+				Poly.Add(Road, false); // road end connects here
 				continue;
 			}
 
 			if (!Start->IsLeaf())
 			{
-				const TSharedPtr<FZGPolygon>* PolygonPtr = Map.Find(StartNode);
-
-				if (!PolygonPtr)
-				{
-					TSharedPtr<FZGPolygon> NewPolygon = MakeShared<FZGPolygon>(this, Start);
-					Polygons.Add(NewPolygon);
-					Map.Add(StartNode, NewPolygon);
-					PolygonPtr = &NewPolygon;
-				}
-				(*PolygonPtr)->Add(Road, true);
+				GetOrCreatePolygon(StartNode).Add(Road, true);
 			}
 
 			if (!End->IsLeaf())
 			{
-				const TSharedPtr<FZGPolygon>* PolygonPtr = Map.Find(EndNode);
-
-				if (!PolygonPtr)
-				{
-					TSharedPtr<FZGPolygon> NewPolygon = MakeShared<FZGPolygon>(this, End);
-					Polygons.Add(NewPolygon);
-					Map.Add(EndNode, NewPolygon);
-					PolygonPtr = &NewPolygon;
-				}
-
-				(*PolygonPtr)->Add(Road, false);
+				GetOrCreatePolygon(EndNode).Add(Road, false);
 			}
 		}
 
