@@ -231,6 +231,11 @@ struct PCGEXELEMENTSZONEGRAPH_API FPCGExZGRoadSettings
 		EditCondition="bCachedSupportsCustomLength && RoadTangentLengthMode != EPCGExZGTangentLengthMode::Default", EditConditionHides, HideEditConditionToggle))
 	double TangentLengthScale = 1.0;
 
+	/** When enabled (Auto/CatmullRom only), clamp the computed tangent length so it never exceeds 1/3 of the shorter neighbor segment. Prevents bezier control overshoot at points adjacent to polygon-boundary crossings, where one neighbor is the short trim segment and the other is a long road segment. Leave disabled to keep the original averaged-length behavior. */
+	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = Settings, meta=(PCG_Overridable, DisplayName="Clamp Tangent to Short Neighbor",
+		EditCondition="bCachedSupportsCustomLength && (RoadTangentLengthMode == EPCGExZGTangentLengthMode::Auto || RoadTangentLengthMode == EPCGExZGTangentLengthMode::CatmullRom)", EditConditionHides, HideEditConditionToggle))
+	bool bClampTangentLengthToShortNeighbor = false;
+
 	/** Trim road shape points inside the polygon boundary so roads start/end precisely at the polygon edge. */
 	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = Settings, meta=(PCG_NotOverridable, InlineEditConditionToggle, CategorySeparator="Endpoints"))
 	bool bTrimRoadEndpoints = true;
@@ -472,6 +477,11 @@ namespace PCGExClusterToZoneGraph
 		void Precompute(const TSharedPtr<PCGExClusters::FCluster>& Cluster);
 		void Compile();
 		void BuildPathOutput(const TSharedPtr<PCGExData::FPointIO>& InPathIO) const;
+
+	private:
+		// Trims an open road endpoint at the corresponding polygon boundary, inserting a snapped
+		// crossing point. Returns false if the road is fully inside the polygon (degenerate).
+		bool TrimOpenEndpoint(bool bIsStartSide, FZoneShapePointType DefaultPointType, double BufferSq, EPCGExZGTangentLengthMode TangentLengthMode);
 	};
 
 	class FZGPolygon : public FZGBase
