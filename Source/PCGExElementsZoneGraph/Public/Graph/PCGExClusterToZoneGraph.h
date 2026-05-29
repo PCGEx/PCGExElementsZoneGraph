@@ -11,6 +11,7 @@
 #include "Core/PCGExClustersProcessor.h"
 #include "Details/PCGExAttachmentRules.h"
 #include "Details/PCGExInputShorthandsDetails.h"
+#include "Graph/PCGExZGMerger.h"
 
 #include "PCGExClusterToZoneGraph.generated.h"
 
@@ -271,6 +272,7 @@ namespace PCGExMT
 namespace PCGExZoneGraph::Labels
 {
 	const FName SourceEdgeFlipFiltersLabel = FName("Flip Conditions");
+	const FName SourceMergeFiltersLabel = FName("Merge Conditions");
 }
 
 UCLASS(MinimalAPI, BlueprintType, ClassGroup = (Procedural), Category="PCGEx|Clusters", meta=(PCGExNodeLibraryDoc="cluster-to-zone-graph"))
@@ -352,6 +354,14 @@ public:
 	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = Settings)
 	FPCGExZGRoadSettings RoadSettings;
 
+	/** Polygon merge settings. */
+	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = Settings, meta=(InlineEditConditionToggle))
+	bool bEnableMerge = false;
+
+	/** Merge adjacent polygons that pass the Merge Conditions filter. Fuses two polygons joined by a single road into one, dissolving the road between them. */
+	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = Settings, meta=(EditCondition="bEnableMerge", EditConditionHides))
+	FPCGExZGMergeSettings MergeSettings;
+
 	/** Output polygon shapes as closed PCG paths. */
 	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Settings|Output")
 	bool bOutputPolygonPaths = false;
@@ -426,6 +436,8 @@ namespace PCGExClusterToZoneGraph
 
 	class FZGBase : public TSharedFromThis<FZGBase>
 	{
+		friend class FZGMerger;
+
 	protected:
 		FProcessor* Processor = nullptr;
 		TArray<FZoneShapePoint> PrecomputedPoints;
@@ -441,12 +453,15 @@ namespace PCGExClusterToZoneGraph
 
 	class FZGRoad : public FZGBase
 	{
+		friend class FZGMerger;
+
 	public:
 		struct FPolygonEndpoint
 		{
 			FVector PolygonCenter = FVector::ZeroVector;
 			FVector Direction = FVector::ZeroVector; // outward from polygon along road
 			double Radius = 0;
+			int32 NodeIndex = -1; // polygon node this endpoint attaches to (-1 = leaf / unset)
 			bool bValid = false;
 		};
 
@@ -456,6 +471,7 @@ namespace PCGExClusterToZoneGraph
 		FPolygonEndpoint StartEndpoint;
 		FPolygonEndpoint EndEndpoint;
 		bool bDegenerate = false;
+		bool bIsMergeSeam = false; // contracted by FZGMerger -- not emitted as a road
 
 		FZoneLaneProfileRef CachedLaneProfile;
 		double CachedMaxLaneWidth = 0;
@@ -486,6 +502,8 @@ namespace PCGExClusterToZoneGraph
 
 	class FZGPolygon : public FZGBase
 	{
+		friend class FZGMerger;
+
 	protected:
 		TArray<TSharedPtr<FZGRoad>> Roads;
 		TBitArray<> FromStart;
@@ -498,6 +516,7 @@ namespace PCGExClusterToZoneGraph
 		FZoneLaneProfileRef CachedLaneProfile;
 		TArray<FZoneLaneProfileRef> CachedPointLaneProfiles;
 		TArray<double> CachedPointHalfWidths;
+		TArray<TSharedPtr<FZGRoad>> CachedPointRoads; // source road per connection point (parallel to PrecomputedPoints)
 
 	public:
 		int32 NodeIndex = -1;
@@ -524,6 +543,7 @@ namespace PCGExClusterToZoneGraph
 		friend class FBatch;
 		friend class FZGRoad;
 		friend class FZGPolygon;
+		friend class FZGMerger;
 
 	protected:
 		FPCGExEdgeDirectionSettings DirectionSettings;
@@ -537,6 +557,8 @@ namespace PCGExClusterToZoneGraph
 
 		TArray<TSharedPtr<FZGRoad>> Roads;
 		TArray<TSharedPtr<FZGPolygon>> Polygons;
+
+		TSharedPtr<FZGMerger> Merger;
 
 		TSharedPtr<PCGExData::TBuffer<double>> PolygonRadiusBuffer;
 		TSharedPtr<PCGExData::TBuffer<int32>> PolygonRoutingTypeBuffer;
@@ -587,6 +609,7 @@ namespace PCGExClusterToZoneGraph
 	protected:
 		TSharedPtr<TArray<int8>> Breakpoints;
 		FPCGExEdgeDirectionSettings DirectionSettings;
+		TArray<TObjectPtr<const UPCGExPointFilterFactoryData>> MergeFilterFactories;
 
 	public:
 		FBatch(FPCGExContext* InContext, const TSharedRef<PCGExData::FPointIO>& InVtx, const TArrayView<TSharedRef<PCGExData::FPointIO>> InEdges)
