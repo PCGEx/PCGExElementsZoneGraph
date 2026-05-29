@@ -359,7 +359,7 @@ public:
 	bool bEnableMerge = false;
 
 	/** Merge adjacent polygons that pass the Merge Conditions filter. Fuses two polygons joined by a single road into one, dissolving the road between them. */
-	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = Settings, meta=(EditCondition="bEnableMerge", EditConditionHides))
+	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = Settings, meta=(EditCondition="bEnableMerge"))
 	FPCGExZGMergeSettings MergeSettings;
 
 	/** Output polygon shapes as closed PCG paths. */
