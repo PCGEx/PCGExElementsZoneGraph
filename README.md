@@ -39,9 +39,7 @@ Epic's ZoneGraph plugin is **experimental**. Epic warns that "ZoneGraph will hav
 
 ## Installation
 
-### From FAB
-
-Get the latest release from the **[FAB Marketplace](https://www.fab.com/listings/e9d0c0a1-5bae-4dc8-8d17-3f1a1877bf91)**.
+> **PCGEx + ZoneGraph** is not available on FAB as the platform does not allow cross-plugin dependencies.
 
 ### From Source
 
@@ -56,8 +54,7 @@ Get the latest release from the **[FAB Marketplace](https://www.fab.com/listings
 > **This plugin is source-available**
 
 - **Personal use** — Free. Individuals may use, copy, and modify the plugin for non-commercial and personal projects at no cost.
-- **Studio / Professional use** — Requires a paid license, available through [FAB](https://www.fab.com/listings/e9d0c0a1-5bae-4dc8-8d17-3f1a1877bf91) under the Professional pricing tier.
-- **Custom licensing** — Alternative licensing arrangements are available and are not bound to the FAB platform. Contact me directly to discuss terms.
+- **Studio / Professional use** — Requires a license. Not currently on FAB, so licensing is handled directly through a custom license agreement.
 
 See [LICENSE](LICENSE) for full terms.
 
