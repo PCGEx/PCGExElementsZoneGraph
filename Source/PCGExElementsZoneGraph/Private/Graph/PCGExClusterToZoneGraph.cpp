@@ -3,6 +3,7 @@
 
 #include "Graph/PCGExClusterToZoneGraph.h"
 
+#include "Graph/PCGExZGMerger.h"
 #include "PCGComponent.h"
 #include "PCGExCoreMacros.h"
 #include "PCGExSubSystem.h"
@@ -55,7 +56,7 @@ UPCGExClusterToZoneGraphSettings::UPCGExClusterToZoneGraphSettings()
 }
 
 #if WITH_EDITOR
-void UPCGExClusterToZoneGraphSettings::ApplyDeprecation(UPCGNode* InOutNode)
+void UPCGExClusterToZoneGraphSettings::PCGExApplyDeprecation(UPCGNode* InOutNode)
 {
 	PCGEX_IF_VERSION_LOWER(1, 75, 14)
 	{
@@ -72,7 +73,7 @@ void UPCGExClusterToZoneGraphSettings::ApplyDeprecation(UPCGNode* InOutNode)
 		}
 	}
 
-	Super::ApplyDeprecation(InOutNode);
+	Super::PCGExApplyDeprecation(InOutNode);
 }
 
 void UPCGExClusterToZoneGraphSettings::PostEditChangeProperty(struct FPropertyChangedEvent& PropertyChangedEvent)
@@ -93,6 +94,15 @@ TArray<FPCGPinProperties> UPCGExClusterToZoneGraphSettings::InputPinProperties()
 	else
 	{
 		PCGEX_PIN_FILTERS(PCGExZoneGraph::Labels::SourceEdgeFlipFiltersLabel, "Road direction flip filters.", Advanced)
+	}
+
+	if (bEnableMerge)
+	{
+		PCGEX_PIN_FILTERS(PCGExZoneGraph::Labels::SourceMergeFiltersLabel, "Per-node filters: a polygon must pass to be considered for merging.", Normal)
+	}
+	else
+	{
+		PCGEX_PIN_FILTERS(PCGExZoneGraph::Labels::SourceMergeFiltersLabel, "Per-node filters: a polygon must pass to be considered for merging.", Advanced)
 	}
 
 	return PinProperties;
@@ -663,8 +673,8 @@ namespace PCGExClusterToZoneGraph
 				const double DistNext = bNeedNeighborDists ? FVector::Dist(PrecomputedPoints[k].Position, Next) : 0.0;
 
 				double Length = bCatmullRom
-					                ? FVector::Dist(Prev, Next) / 6.0
-					                : (DistPrev + DistNext) * 0.5 / 3.0;
+					? FVector::Dist(Prev, Next) / 6.0
+					: (DistPrev + DistNext) * 0.5 / 3.0;
 
 				// TangentLength is a single scalar shared by arrive/leave; clamping to MinDist/3 is
 				// the standard no-overshoot bezier rule when neighbors are very asymmetric (e.g. a
@@ -696,8 +706,8 @@ namespace PCGExClusterToZoneGraph
 			const double ProjPrev = (PrecomputedPoints[j - 1].Position - Endpoint.PolygonCenter) | Endpoint.Direction;
 
 			const bool bMatch = bIsStartSide
-				                    ? (ProjJ >= Endpoint.Radius && ProjPrev < Endpoint.Radius)
-				                    : (ProjJ < Endpoint.Radius && ProjPrev >= Endpoint.Radius);
+				? (ProjJ >= Endpoint.Radius && ProjPrev < Endpoint.Radius)
+				: (ProjJ < Endpoint.Radius && ProjPrev >= Endpoint.Radius);
 
 			if (bMatch)
 			{
@@ -714,7 +724,10 @@ namespace PCGExClusterToZoneGraph
 		{
 			for (int32 j = 1; j < N; j++)
 			{
-				if (TryMatch(j)) { break; }
+				if (TryMatch(j))
+				{
+					break;
+				}
 			}
 		}
 		else
@@ -723,15 +736,18 @@ namespace PCGExClusterToZoneGraph
 			// the valid outside points that come after it.
 			for (int32 j = N - 1; j > 0; j--)
 			{
-				if (TryMatch(j)) { break; }
+				if (TryMatch(j))
+				{
+					break;
+				}
 			}
 		}
 
 		if (!bFoundCrossing)
 		{
 			const double EdgeProj = bIsStartSide
-				                        ? ((PrecomputedPoints[0].Position - Endpoint.PolygonCenter) | Endpoint.Direction)
-				                        : ((PrecomputedPoints.Last().Position - Endpoint.PolygonCenter) | Endpoint.Direction);
+				? ((PrecomputedPoints[0].Position - Endpoint.PolygonCenter) | Endpoint.Direction)
+				: ((PrecomputedPoints.Last().Position - Endpoint.PolygonCenter) | Endpoint.Direction);
 			return EdgeProj >= Endpoint.Radius;
 		}
 
@@ -1012,6 +1028,7 @@ namespace PCGExClusterToZoneGraph
 		PCGExArrayHelpers::InitArray(PrecomputedPoints, Order.Num());
 		CachedPointLaneProfiles.SetNum(Order.Num());
 		CachedPointHalfWidths.SetNum(Order.Num());
+		CachedPointRoads.SetNum(Order.Num());
 
 		for (int i = 0; i < Order.Num(); i++)
 		{
@@ -1024,6 +1041,7 @@ namespace PCGExClusterToZoneGraph
 			EP.PolygonCenter = CenterPosition;
 			EP.Direction = RoadDirection;
 			EP.Radius = CachedRoadRadii[Ri];
+			EP.NodeIndex = NodeIndex;
 			EP.bValid = true;
 
 			if (FromStart[Ri])
@@ -1048,6 +1066,7 @@ namespace PCGExClusterToZoneGraph
 			PrecomputedPoints[i] = ShapePoint;
 			CachedPointLaneProfiles[i] = Road->CachedLaneProfile;
 			CachedPointHalfWidths[i] = HalfWidths[Ri];
+			CachedPointRoads[i] = Road;
 		}
 	}
 
@@ -1314,6 +1333,18 @@ namespace PCGExClusterToZoneGraph
 			}
 		}
 
+		if (Settings->bEnableMerge)
+		{
+			Merger = MakeShared<FZGMerger>(this);
+			if (!Merger->Init(&GetParentBatch<FBatch>()->MergeFilterFactories))
+			{
+				// Merging is opt-in and secondary: a filter-init failure disables it rather than aborting
+				// the whole cluster's road/polygon output.
+				PCGE_LOG_C(Warning, GraphAndLog, ExecutionContext, FTEXT("Merge filter initialization failed; proceeding without polygon merging."));
+				Merger.Reset();
+			}
+		}
+
 		if (VtxFiltersManager)
 		{
 			PCGEX_ASYNC_GROUP_CHKD(TaskManager, FilterBreakpoints)
@@ -1502,6 +1533,13 @@ namespace PCGExClusterToZoneGraph
 			Road->Precompute(Cluster);
 		}
 
+		// Phase 5 (optional): fuse adjacent polygons. Post-process over the computed connection rings --
+		// drops contracted seam roads and replaces fused members with a single host polygon.
+		if (Merger)
+		{
+			Merger->Execute();
+		}
+
 		const int32 NumPolygons = Polygons.Num();
 		const int32 TotalCount = NumPolygons + Roads.Num();
 
@@ -1548,7 +1586,7 @@ namespace PCGExClusterToZoneGraph
 				if (This->Context->OutputPolygonPaths)
 				{
 					const int32 PointIndex = This->Cluster->GetNode(Polygon->NodeIndex)->PointIndex;
-					TSharedPtr<PCGExData::FPointIO> PathIO = This->Context->OutputPolygonPaths->Emplace_GetRef(This->VtxDataFacade->Source, PCGExData::EIOInit::New);
+					TSharedPtr<PCGExData::FPointIO> PathIO = This->Context->OutputPolygonPaths->Emplace_GetRef<UPCGPointArrayData>(This->VtxDataFacade->Source, PCGExData::EIOInit::New);
 					PathIO->IOIndex = IOBase + PointIndex;
 					Polygon->BuildPathOutput(PathIO);
 					PCGExPaths::Helpers::SetClosedLoop(PathIO, true);
@@ -1568,7 +1606,7 @@ namespace PCGExClusterToZoneGraph
 
 				if (This->Context->OutputRoadPaths)
 				{
-					TSharedPtr<PCGExData::FPointIO> PathIO = This->Context->OutputRoadPaths->Emplace_GetRef(This->VtxDataFacade->Source, PCGExData::EIOInit::New);
+					TSharedPtr<PCGExData::FPointIO> PathIO = This->Context->OutputRoadPaths->Emplace_GetRef<UPCGPointArrayData>(This->VtxDataFacade->Source, PCGExData::EIOInit::New);
 					PathIO->IOIndex = IOBase + This->Cluster->GetNode(Road->Chain->Seed.Node)->PointIndex;
 					Road->BuildPathOutput(PathIO);
 				}
@@ -1789,6 +1827,7 @@ namespace PCGExClusterToZoneGraph
 		ProcessedChains.Empty();
 		Roads.Empty();
 		Polygons.Empty();
+		Merger.Reset();
 
 		PolygonRadiusBuffer.Reset();
 		PolygonRoutingTypeBuffer.Reset();
@@ -1846,6 +1885,16 @@ namespace PCGExClusterToZoneGraph
 		{
 			RS.TangentLength.RegisterBufferDependencies(ExecutionContext, FacadePreloader);
 		}
+
+		if (Settings->bEnableMerge)
+		{
+			PCGExPointFilter::RegisterBuffersDependencies(ExecutionContext, MergeFilterFactories, FacadePreloader);
+
+			if (Settings->MergeSettings.bUseMergeGroups)
+			{
+				FacadePreloader.Register<int32>(ExecutionContext, Settings->MergeSettings.MergeGroupAttribute, PCGExData::EBufferPreloadType::BroadcastFromName);
+			}
+		}
 	}
 
 	void FBatch::OnProcessingPreparationComplete()
@@ -1857,6 +1906,12 @@ namespace PCGExClusterToZoneGraph
 		{
 			PCGE_LOG_C(Warning, GraphAndLog, Context, FTEXT("Some vtx are missing the specified Direction attribute."));
 			return;
+		}
+
+		if (Settings->bEnableMerge)
+		{
+			PCGExFactories::GetInputFactories(Context, PCGExZoneGraph::Labels::SourceMergeFiltersLabel, MergeFilterFactories, PCGExFactories::ClusterNodeFilters, false);
+			PCGExFactories::RegisterConsumableAttributesWithFacade(MergeFilterFactories, VtxDataFacade);
 		}
 
 		TBatch<FProcessor>::OnProcessingPreparationComplete();
