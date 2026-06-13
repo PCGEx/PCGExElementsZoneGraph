@@ -56,7 +56,7 @@ UPCGExClusterToZoneGraphSettings::UPCGExClusterToZoneGraphSettings()
 }
 
 #if WITH_EDITOR
-void UPCGExClusterToZoneGraphSettings::ApplyDeprecation(UPCGNode* InOutNode)
+void UPCGExClusterToZoneGraphSettings::PCGExApplyDeprecation(UPCGNode* InOutNode)
 {
 	PCGEX_IF_VERSION_LOWER(1, 75, 14)
 	{
@@ -73,7 +73,7 @@ void UPCGExClusterToZoneGraphSettings::ApplyDeprecation(UPCGNode* InOutNode)
 		}
 	}
 
-	Super::ApplyDeprecation(InOutNode);
+	Super::PCGExApplyDeprecation(InOutNode);
 }
 
 void UPCGExClusterToZoneGraphSettings::PostEditChangeProperty(struct FPropertyChangedEvent& PropertyChangedEvent)
