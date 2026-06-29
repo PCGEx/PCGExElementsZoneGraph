@@ -14,6 +14,7 @@
 #include "Clusters/Artifacts/PCGExChain.h"
 #include "Containers/PCGExManagedObjects.h"
 #include "Core/PCGExMT.h"
+#include "Core/PCGExFilterTypeSets.h"
 #include "Core/PCGExPointFilter.h"
 #include "Data/PCGExData.h"
 #include "Data/PCGExPointIO.h"
@@ -148,7 +149,7 @@ bool FPCGExClusterToZoneGraphElement::Boot(FPCGExContext* InContext) const
 
 	if (Settings->bEnableFlipFilters)
 	{
-		GetInputFactories(Context, PCGExZoneGraph::Labels::SourceEdgeFlipFiltersLabel, Context->FlipEdgeFilterFactories, PCGExFactories::ClusterEdgeFilters, false);
+		PCGExFactories::GetInputFactories(Context, PCGExZoneGraph::Labels::SourceEdgeFlipFiltersLabel, Context->FlipEdgeFilterFactories, PCGExFactories::ClusterEdgeFilters(), false);
 	}
 
 	if (const UPCGComponent* PCGComponent = InContext->GetComponent())
@@ -1910,7 +1911,7 @@ namespace PCGExClusterToZoneGraph
 
 		if (Settings->bEnableMerge)
 		{
-			PCGExFactories::GetInputFactories(Context, PCGExZoneGraph::Labels::SourceMergeFiltersLabel, MergeFilterFactories, PCGExFactories::ClusterNodeFilters, false);
+			PCGExFactories::GetInputFactories(Context, PCGExZoneGraph::Labels::SourceMergeFiltersLabel, MergeFilterFactories, PCGExFactories::ClusterNodeFilters(), false);
 			PCGExFactories::RegisterConsumableAttributesWithFacade(MergeFilterFactories, VtxDataFacade);
 		}
 

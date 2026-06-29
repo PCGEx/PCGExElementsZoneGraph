@@ -9,6 +9,7 @@
 #include "Clusters/PCGExCluster.h"
 #include "Clusters/Artifacts/PCGExChain.h"
 #include "Core/PCGExClusterFilter.h"
+#include "Core/PCGExFilterTypeSets.h"
 #include "Core/PCGExPointFilter.h"
 #include "Data/PCGExData.h"
 #include "Helpers/PCGExArrayHelpers.h"
@@ -52,7 +53,7 @@ namespace PCGExClusterToZoneGraph
 		{
 			// Its own manager -- the built-in VtxFiltersManager slot is already consumed by breakpoints.
 			EligibilityManager = MakeShared<PCGExClusterFilter::FManager>(Processor->Cluster.ToSharedRef(), Processor->VtxDataFacade, Processor->EdgeDataFacade);
-			EligibilityManager->SetSupportedTypes(&PCGExFactories::ClusterNodeFilters);
+			EligibilityManager->SetSupportedTypes(&PCGExFactories::ClusterNodeFilters());
 			if (!EligibilityManager->Init(Processor->GetContext(), *InFilterFactories))
 			{
 				return false;
