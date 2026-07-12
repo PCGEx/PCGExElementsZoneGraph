@@ -1,4 +1,4 @@
-![UE 5.7](https://img.shields.io/badge/UE-5.7-darkgreen)
+![UE 5.8](https://img.shields.io/badge/UE-5.8-darkgreen)
 
 <p align="center">
   <img src="https://github.com/Nebukam/PCGExElementsZoneGraph/blob/main/Resources/ZG_Logo.png" alt="PCGEx Logo" width="240">
