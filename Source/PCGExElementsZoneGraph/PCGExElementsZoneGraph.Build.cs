@@ -8,6 +8,7 @@ public class PCGExElementsZoneGraph : ModuleRules
 	public PCGExElementsZoneGraph(ReadOnlyTargetRules Target) : base(Target)
 	{
 		PCHUsage = PCHUsageMode.UseExplicitOrSharedPCHs;
+		ShortName = "PCGExZoneGraph";
 
 		PublicIncludePaths.AddRange(
 			new string[]
